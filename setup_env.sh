@@ -4,6 +4,15 @@
 
 set -e # Exit immediately if a command fails
 
+# Ensure workspace is fully ready before proceeding
+if [ ! -f "main.tf" ] || [ ! -f "variables.tf" ]; then
+    echo "⏳ Waiting for workspace to be fully ready..."
+    while [ ! -f "main.tf" ] || [ ! -f "variables.tf" ]; do
+        sleep 1
+    done
+    echo "✅ Workspace ready"
+fi
+
 echo "🛰️  Syncing VectorPlane configuration..."
 
 # 1. Verify the token exists (CTO specification)
