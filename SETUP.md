@@ -1,24 +1,31 @@
-# VectorPlane GCP Onboarding Setup
+# VectorPlane GCP Onboarding
 
-Welcome to VectorPlane GCP integration! This setup will create secure access to your GCP project using Workload Identity Federation (WIF).
+Welcome to VectorPlane GCP integration! This setup creates secure access to your GCP project using Workload Identity Federation (WIF).
 
 ## 🔐 Security Overview
 
 VectorPlane uses **Workload Identity Federation** for secure, keyless authentication:
 
 - ✅ **No secrets exchanged** - VectorPlane never receives or stores GCP service account keys
-- ✅ **Short-lived tokens** - Access tokens expire after 1 hour
+- ✅ **Short-lived tokens** - Access tokens expire after 1 hour, setup tokens expire after 15 minutes
 - ✅ **Zero-trust authentication** - Cryptographic proof of VectorPlane's AWS identity
 - ✅ **Customer-controlled** - You can revoke access instantly by deleting resources
+- ✅ **API-based configuration** - Secure variable retrieval without manual copy-paste
 
 ## 🚀 Quick Start
 
-### Step 1: Set up environment variables
+### Step 1: Set up environment
 
 ```bash
-# Load VectorPlane session variables
-bash ./setup_env.sh
+# Configure Terraform variables from VectorPlane API
+bash ./setup.sh
 ```
+
+This script:
+- Authenticates with VectorPlane using your session token
+- Retrieves Terraform variables via secure API
+- Generates `terraform.tfvars.json` automatically
+- Validates session and provides clear error messages
 
 ### Step 2: Initialize Terraform
 
@@ -26,13 +33,13 @@ bash ./setup_env.sh
 terraform init
 ```
 
-### Step 3: Review what will be created
+### Step 3: Review deployment plan
 
 ```bash
 terraform plan
 ```
 
-This will show you:
+This shows you:
 - Workload Identity Pool and Provider
 - Service Account with appropriate permissions
 - IAM bindings for secure access
@@ -45,8 +52,8 @@ terraform apply
 
 This will:
 1. Create the GCP resources
-2. Send a webhook to VectorPlane to complete onboarding
-3. Display a success message when complete
+2. Send a secure webhook to VectorPlane
+3. Complete the integration automatically
 
 ## 🏗️ What This Creates
 
@@ -59,45 +66,59 @@ This will:
 
 ## 🔍 Permissions Granted
 
-The service account will have these permissions in your GCP project:
+The service account will have these permissions:
 
+### PROJECT Scope
 - `roles/securitycenter.findingsViewer` - Read security findings
 - `roles/browser` - View project resources and structure
-- `roles/storage.objectViewer` - Read Terraform state files (for state scanning)
+- `roles/storage.objectViewer` - Read Terraform state files
 
-For FOLDER or ORGANIZATION scope, additional permissions are granted at the appropriate level.
+### FOLDER Scope
+- Same as PROJECT scope, applied at folder level
+- Includes all projects within the folder
+
+### ORGANIZATION Scope
+- Same as PROJECT scope, applied at organization level
+- Includes all projects and folders in your organization
 
 ## 🛠️ Troubleshooting
 
-### "No context found" Error
+### Setup Script Errors
 
-If you see this error, it means the Cloud Shell session wasn't opened via the VectorPlane link:
+**"No VectorPlane context found"**
+- **Cause**: Cloud Shell wasn't opened via VectorPlane link
+- **Solution**: Return to VectorPlane and click "Open Cloud Shell" again
 
-```bash
-# Check if context is available
-curl -sf -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/cloudshell_context"
-```
+**"Authentication failed" or "Session expired"**
+- **Cause**: Setup session expired (15-minute limit)
+- **Solution**: Return to VectorPlane and start a new onboarding session
 
-**Solution**: Return to VectorPlane and click "Open Cloud Shell" again.
+**"Invalid token format"**
+- **Cause**: Corrupted session data or browser issue
+- **Solution**: Clear browser cache and restart from VectorPlane
 
-### Terraform Validation Errors
+### API Connection Issues
 
-If you see validation errors about missing variables:
+**"API call failed" with network errors**
+- **Cause**: Cloud Shell cannot reach VectorPlane API
+- **Solution**: Check if VectorPlane instance is running and accessible
 
-```bash
-# Verify environment variables are set
-env | grep TF_VAR
-```
+**HTTP 403 "Access denied"**
+- **Cause**: Token doesn't match session or session corrupted
+- **Solution**: Start fresh onboarding session from VectorPlane
 
-**Solution**: Run `./setup_env.sh` again to load the variables.
+### Terraform Deployment Issues
 
-### Webhook Failures
+**Variable validation errors**
+- **Cause**: `terraform.tfvars.json` missing or corrupted
+- **Solution**: Run `./setup.sh` again to regenerate variables
 
-If the webhook fails after `terraform apply`:
-
-1. **Check network connectivity**: Cloud Shell should be able to reach your VectorPlane instance
-2. **Verify session hasn't expired**: Sessions expire after 15 minutes
-3. **Check VectorPlane logs**: The webhook endpoint should receive and process the callback
+**Webhook timeout during apply**
+- **Cause**: VectorPlane API unreachable or session expired
+- **Solutions**:
+  1. Verify VectorPlane instance is running
+  2. Check session hasn't expired (15-minute limit)
+  3. Restart onboarding if needed
 
 ## 🔄 Clean Up
 
@@ -107,16 +128,37 @@ To remove all created resources:
 terraform destroy
 ```
 
-This will delete the Workload Identity Pool, Service Account, and all IAM bindings.
+This deletes the Workload Identity Pool, Service Account, and all IAM bindings.
 
 ## 📞 Support
 
-If you encounter any issues:
+If you encounter issues:
 
-1. Check the troubleshooting section above
-2. Review the Terraform plan output for any obvious issues
-3. Contact VectorPlane support with the session ID from the error messages
+1. Check error messages from `./setup.sh` - they provide specific guidance
+2. Verify session hasn't expired (15-minute limit from VectorPlane)
+3. Review Terraform plan output for permission issues
+4. Contact VectorPlane support with the session ID from error messages
+
+## 🔧 Advanced Usage
+
+### Manual Variable Inspection
+
+```bash
+# View generated Terraform variables
+cat terraform.tfvars.json
+
+# Check session expiration
+./setup.sh  # Shows expiration time in output
+```
+
+### Testing Connectivity
+
+```bash
+# Test API connectivity (requires valid token)
+curl -H "Authorization: Bearer <your-token>" \
+  "https://your-vectorplane-instance/api/v1/onboarding/gcp/context/<session-id>"
+```
 
 ---
 
-**Ready to proceed?** Run `./setup_env.sh` to get started!
+**Ready to proceed?** Run `./setup.sh` to get started!
