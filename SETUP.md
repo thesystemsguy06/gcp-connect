@@ -1,163 +1,87 @@
 # VectorPlane GCP Onboarding
 
-Welcome to VectorPlane GCP integration! This setup creates secure access to your GCP project using Workload Identity Federation (WIF).
+<walkthrough-author name="VectorPlane" repositoryUrl="https://github.com/vectorplane/gcp-connect" tutorialName="gcp-onboarding"></walkthrough-author>
 
-## 🔐 Security Overview
+<walkthrough-watcher-constant key="VP_TOKEN" value="{{VP_TOKEN}}"></walkthrough-watcher-constant>
 
-VectorPlane uses **Workload Identity Federation** for secure, keyless authentication:
+## Welcome to VectorPlane GCP Integration!
 
-- ✅ **No secrets exchanged** - VectorPlane never receives or stores GCP service account keys
-- ✅ **Short-lived tokens** - Access tokens expire after 1 hour, setup sessions expire after 15 minutes
-- ✅ **Zero-trust authentication** - Cryptographic proof of VectorPlane's AWS identity
-- ✅ **Customer-controlled** - You can revoke access instantly by deleting resources
-- ✅ **Enterprise-grade sync** - Secure bearer token authentication with API-based configuration pull
+<walkthrough-tutorial-duration duration="5"></walkthrough-tutorial-duration>
 
-## 🚀 Quick Start
+This setup creates secure access to your GCP project using Workload Identity Federation (WIF).
 
-### Step 1: Sync configuration
+**Security highlights:**
+- ✅ No secrets exchanged - VectorPlane never stores GCP keys
+- ✅ Short-lived tokens - 15-minute setup sessions
+- ✅ Enterprise-grade sync - Bearer token authentication
+- ✅ Customer-controlled - Revoke access anytime
 
-```bash
-# Sync Terraform variables from VectorPlane API
-./setup_env.sh
-```
+Click **Start** below to begin the guided setup.
 
-This script automatically:
-- Authenticates with VectorPlane using your bearer token
-- Pulls configuration via secure API endpoint
-- Generates `terraform.tfvars.json` for Terraform auto-loading
-- Validates session and provides enterprise-grade error messages
+## Step 1: Sync Configuration
 
-### Step 2: Initialize Terraform
+<walkthrough-spotlight-pointer cssSelector="#terminal">Click here to focus the terminal</walkthrough-spotlight-pointer>
 
-```bash
-terraform init
-```
+Your VectorPlane session is ready! Click the button below to sync your configuration automatically.
 
-### Step 3: Review deployment plan
+<walkthrough-terminal-command command="./setup_env.sh">Sync VectorPlane Configuration</walkthrough-terminal-command>
 
-```bash
-terraform plan
-```
+This command will:
+- Authenticate with VectorPlane using your bearer token
+- Pull configuration via secure API endpoint
+- Generate `terraform.tfvars.json` for Terraform auto-loading
+- Validate session with enterprise-grade error messages
+
+**Expected output:** You should see "✅ Configuration synced successfully" when complete.
+
+## Step 2: Initialize Terraform
+
+Now initialize Terraform with the synced configuration:
+
+<walkthrough-terminal-command command="terraform init">Initialize Terraform</walkthrough-terminal-command>
+
+This downloads the required Google Cloud provider and prepares your workspace.
+
+## Step 3: Review Deployment Plan
+
+Review what resources will be created:
+
+<walkthrough-terminal-command command="terraform plan">Review Terraform Plan</walkthrough-terminal-command>
 
 This shows you:
-- Workload Identity Pool and Provider
-- Service Account with appropriate permissions
-- IAM bindings for secure access
+- **Workload Identity Pool** - Trust boundary for external providers
+- **WIF Provider** - Trusts VectorPlane's AWS account (101460827772)
+- **Service Account** - Identity for VectorPlane to access your resources
+- **IAM Bindings** - Security Command Center and asset discovery permissions
 
-### Step 4: Deploy resources
+## Step 4: Deploy Resources
 
-```bash
-terraform apply
-```
+Deploy the VectorPlane integration:
+
+<walkthrough-terminal-command command="terraform apply">Deploy VectorPlane Integration</walkthrough-terminal-command>
+
+**Important:** Type `yes` when prompted to confirm the deployment.
 
 This will:
 1. Create the GCP resources
 2. Send a secure webhook to VectorPlane
 3. Complete the integration automatically
 
-## 🏗️ What This Creates
+## 🎉 Success!
 
-| Resource | Purpose |
-|----------|---------|
-| **Workload Identity Pool** | Trust boundary for external identity providers |
-| **WIF Provider** | Trusts VectorPlane's AWS account (101460827772) |
-| **Service Account** | Identity for VectorPlane to access your GCP resources |
-| **IAM Bindings** | Permissions for Security Command Center and asset discovery |
+<walkthrough-conclusion-trophy></walkthrough-conclusion-trophy>
 
-## 🔍 Permissions Granted
+Your GCP project is now connected to VectorPlane!
 
-The service account will have these permissions:
+**What happens next:**
+- VectorPlane can now scan your GCP resources securely
+- You'll see findings appear in your VectorPlane dashboard
+- The integration uses Workload Identity Federation (no stored keys)
 
-### PROJECT Scope
-- `roles/securitycenter.findingsViewer` - Read security findings
-- `roles/browser` - View project resources and structure
-- `roles/storage.objectViewer` - Read Terraform state files
+**To remove the integration:** Run `terraform destroy` anytime.
 
-### FOLDER Scope
-- Same as PROJECT scope, applied at folder level
-- Includes all projects within the folder
+**Need help?** Contact VectorPlane support with your session ID.
 
-### ORGANIZATION Scope
-- Same as PROJECT scope, applied at organization level
-- Includes all projects and folders in your organization
-
-## 🛠️ Troubleshooting
-
-### Setup Script Issues
-
-**"VP_TOKEN not found in environment"**
-- **Cause**: Cloud Shell wasn't opened via VectorPlane link
-- **Solution**: Return to VectorPlane and click "Open Cloud Shell" again
-
-**"Failed to retrieve configuration"**
-- **Cause**: Setup session expired (15-minute limit) or API unreachable
-- **Solution**: Return to VectorPlane and start a new onboarding session
-
-**Curl fails with 4xx/5xx errors**
-- **Cause**: Invalid bearer token or session expired
-- **Solution**: Restart onboarding from VectorPlane dashboard
-
-### Terraform Deployment Issues
-
-**Variable prompts during terraform apply**
-- **Cause**: `terraform.tfvars.json` not created or corrupted
-- **Solution**: Run `./setup_env.sh` again to regenerate variables
-
-**Webhook timeout during apply**
-- **Cause**: VectorPlane API unreachable or session expired
-- **Solutions**:
-  1. Verify VectorPlane instance is running
-  2. Check session hasn't expired (15-minute limit)
-  3. Restart onboarding if needed
-
-## 🔄 Clean Up
-
-To remove all created resources:
-
-```bash
-terraform destroy
-```
-
-This deletes the Workload Identity Pool, Service Account, and all IAM bindings.
-
-## 📞 Support
-
-If you encounter issues:
-
-1. Check error messages from `./setup_env.sh` - they provide specific guidance
-2. Verify session hasn't expired (15-minute limit from VectorPlane)
-3. Review Terraform plan output for permission issues
-4. Contact VectorPlane support with the session ID from error messages
-
-## 🔧 Advanced Usage
-
-### Manual Variable Inspection
-
-```bash
-# View generated Terraform variables
-cat terraform.tfvars.json
-
-# Re-run sync if needed
-./setup_env.sh
-```
-
-### Verify Configuration Before Apply
-
-The setup script shows the synced configuration:
-
-```
-📋 Terraform Variables Loaded:
-----------------------------------------
-{
-  "external_id": "sess_abc123...",
-  "webhook_secret": "secret...",
-  "vectorplane_callback_url": "https://...",
-  "vectorplane_account_id": "101460827772",
-  "onboarding_scope": "PROJECT"
-}
-----------------------------------------
-```
-
----
-
-**Ready to proceed?** Run `./setup_env.sh` to get started!
+<walkthrough-footnote>
+Powered by VectorPlane Enterprise Security Platform
+</walkthrough-footnote>
