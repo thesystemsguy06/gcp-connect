@@ -1,10 +1,10 @@
-# VectorPlane GCP Onboarding - Variables
-# These variables are automatically set by the VectorPlane Cloud Shell deep link
+# VectorPlane GCP Onboarding - Input Variables
+# Configuration parameters for the Terraform module
 
-# Required: Session ID from VectorPlane onboarding flow
+# Required: External ID for secure session correlation
 variable "external_id" {
   type        = string
-  description = "Session identifier from VectorPlane onboarding flow (e.g., sess_abc123xyz)"
+  description = "Unique session identifier from VectorPlane (used for webhook correlation and IAM trust)"
 
   validation {
     condition     = can(regex("^sess_[a-zA-Z0-9_-]+$", var.external_id))
@@ -47,7 +47,7 @@ variable "vectorplane_aws_account_id" {
   }
 }
 
-# Required: Onboarding scope level
+# Required: Onboarding scope
 variable "onboarding_scope" {
   type        = string
   description = "Scope of the GCP onboarding: PROJECT, FOLDER, or ORGANIZATION"
@@ -66,60 +66,16 @@ variable "project_id" {
   default     = ""
 }
 
-# Optional: GCP Scope ID (required for FOLDER and ORGANIZATION scopes)
+# Optional: GCP scope identifier (folder ID or organization domain)
 variable "gcp_scope_id" {
   type        = string
   description = "GCP resource identifier: folder ID for FOLDER scope, domain for ORGANIZATION scope"
   default     = ""
-
-  validation {
-    condition = var.onboarding_scope == "PROJECT" || (
-      var.onboarding_scope == "FOLDER" && var.gcp_scope_id != "" && can(regex("^folders/[0-9]+$", var.gcp_scope_id)) ||
-      var.onboarding_scope == "ORGANIZATION" && var.gcp_scope_id != ""
-    )
-    error_message = "FOLDER scope requires gcp_scope_id in format 'folders/123456789'. ORGANIZATION scope requires organization domain."
-  }
 }
 
 # Optional: Organization domain (for ORGANIZATION scope)
 variable "organization_domain" {
   type        = string
-  description = "Organization domain name (e.g., 'example.com') for ORGANIZATION scope"
+  description = "GCP Organization domain name (required for ORGANIZATION scope)"
   default     = ""
-}
-
-# Optional: Custom service account ID
-variable "service_account_id" {
-  type        = string
-  description = "Custom service account ID (defaults to 'vectorplane-security')"
-  default     = "vectorplane-security"
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.service_account_id))
-    error_message = "Service account ID must be 6-30 characters, start with lowercase letter, and contain only lowercase letters, numbers, and hyphens."
-  }
-}
-
-# Optional: Custom WIF pool ID
-variable "wif_pool_id" {
-  type        = string
-  description = "Custom Workload Identity Pool ID (defaults to 'vectorplane-security-pool')"
-  default     = "vectorplane-security-pool"
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,30}[a-z0-9]$", var.wif_pool_id))
-    error_message = "WIF pool ID must be 4-32 characters, start with lowercase letter, and contain only lowercase letters, numbers, and hyphens."
-  }
-}
-
-# Optional: Custom WIF provider ID
-variable "wif_provider_id" {
-  type        = string
-  description = "Custom Workload Identity Pool Provider ID (defaults to 'vectorplane-aws-provider')"
-  default     = "vectorplane-aws-provider"
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,30}[a-z0-9]$", var.wif_provider_id))
-    error_message = "WIF provider ID must be 4-32 characters, start with lowercase letter, and contain only lowercase letters, numbers, and hyphens."
-  }
 }
