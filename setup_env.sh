@@ -1,54 +1,32 @@
 #!/bin/bash
-# VectorPlane GCP Onboarding - CTO Specification Implementation
-# This script implements the exact "Context-Sync" pattern specified by the CTO
+# VectorPlane GCP Onboarding - Final CTO Implementation
+# Implements the exact "Context-Sync" pattern with CTO's final specifications
 
-set -e
+set -e # Exit immediately if a command fails
 
-echo "🔧 VectorPlane GCP Onboarding Setup"
-echo "==================================="
-echo ""
+echo "🛰️  Syncing VectorPlane configuration..."
 
-# Check for required environment variables (CTO specification)
-if [ -z "$VP_TOKEN" ] || [ -z "$SESSION_ID" ] || [ -z "$VP_API_BASE" ]; then
-    echo "❌ Missing VectorPlane session information"
-    echo ""
-    echo "This script must be run from Google Cloud Shell opened via VectorPlane."
-    echo "Required environment variables:"
-    echo "  VP_TOKEN     - VectorPlane bearer token"
-    echo "  SESSION_ID   - VectorPlane session identifier"
-    echo "  VP_API_BASE  - VectorPlane API base URL"
-    echo ""
-    echo "Please return to VectorPlane and click 'Open Cloud Shell' to continue."
+# 1. Verify the token exists (CTO specification)
+if [ -z "$VP_TOKEN" ]; then
+    echo "❌ Error: VP_TOKEN not found in environment."
+    echo "Please restart onboarding from the VectorPlane dashboard."
     exit 1
 fi
 
-echo "📋 Session ID: $SESSION_ID"
-echo "🌐 API Base: $VP_API_BASE"
-echo ""
-
-# The "Magic" Pull (CTO specification)
-echo "📡 Pulling configuration from VectorPlane API..."
-API_URL="${VP_API_BASE}/api/v1/onboarding/gcp/context/${SESSION_ID}"
-
-# Exact curl pattern from CTO specification
-curl -H "Authorization: Bearer $VP_TOKEN" \
-     "$API_URL" \
+# 2. Pull the context from the Backend (CTO's exact pattern)
+# Note: We use -f to fail on 4xx/5xx errors, -s for silent mode
+curl -f -s -H "Authorization: Bearer $VP_TOKEN" \
+     "${VP_API_BASE}/api/v1/onboarding/gcp/context" \
      -o terraform.tfvars.json
 
-# Check if the pull was successful
-if [ $? -ne 0 ] || [ ! -f "terraform.tfvars.json" ]; then
+# 3. Verify the download was successful
+if [ ! -f "terraform.tfvars.json" ]; then
     echo "❌ Failed to retrieve configuration from VectorPlane API"
-    echo ""
-    echo "Possible causes:"
-    echo "- Session expired (15-minute limit)"
-    echo "- VectorPlane API unreachable"
-    echo "- Invalid bearer token"
-    echo ""
-    echo "🔗 Return to VectorPlane to restart the onboarding process."
+    echo "Please restart onboarding from the VectorPlane dashboard."
     exit 1
 fi
 
-# Validate JSON format
+# 4. Validate JSON format
 if ! python3 -m json.tool terraform.tfvars.json > /dev/null 2>&1; then
     echo "❌ Invalid JSON received from API"
     echo "File contents:"
@@ -56,21 +34,16 @@ if ! python3 -m json.tool terraform.tfvars.json > /dev/null 2>&1; then
     exit 1
 fi
 
-echo "✅ Configuration retrieved successfully"
-echo ""
+echo "✅ Configuration synced successfully."
 
-# Show the configuration for verification (CTO DoD requirement)
-echo "📋 Terraform Variables:"
+# 5. Show the configuration for verification (enterprise transparency)
+echo ""
+echo "📋 Terraform Variables Loaded:"
 echo "----------------------------------------"
 cat terraform.tfvars.json | python3 -m json.tool 2>/dev/null || cat terraform.tfvars.json
 echo "----------------------------------------"
 echo ""
 
-echo "🎉 Setup complete! Variables configured successfully."
+echo "🚀 Next steps: terraform init && terraform apply"
 echo ""
-echo "Next steps:"
-echo "  terraform init"
-echo "  terraform plan"
-echo "  terraform apply"
-echo ""
-echo "✅ Zero Prompts: terraform apply will proceed without asking for input"
+echo "✅ Zero Prompts: Terraform will proceed without asking for input"
