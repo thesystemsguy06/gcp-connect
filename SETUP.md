@@ -4,13 +4,29 @@
 
 <walkthrough-tutorial-duration duration="3"></walkthrough-tutorial-duration>
 
-## 🚀 Secure GCP Integration Deployment
+## 🔄 Initializing Secure Workspace
+
+**Loading your enterprise-grade GCP integration environment...**
+
+<walkthrough-spotlight-pointer cssSelector="#terminal" text="Terminal is preparing your secure session">
+</walkthrough-spotlight-pointer>
+
+⏳ **Cloning repository and configuring environment**
+- Repository: Downloading VectorPlane Terraform module
+- Environment: Validating VP_TOKEN and session credentials
+- Workspace: Preparing Cloud Shell file system
+
+**Once complete, you'll see deployment options in the terminal below.**
+
+---
+
+## 🚀 Deployment Ready
 
 **Enterprise-grade Workload Identity Federation setup with zero stored keys.**
 
 Your secure session is ready. Choose your preferred deployment method:
 
-**Option A:** Use the terminal auto-deployment (already running)
+**Option A:** Use the terminal auto-deployment (appears automatically)
 **Option B:** Follow guided steps below
 
 ---
