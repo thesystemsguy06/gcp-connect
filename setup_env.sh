@@ -1,65 +1,81 @@
 #!/bin/bash
   # VectorPlane GCP Onboarding - Environment Setup
-  # This script reads variables from cloudshell_context and sets them as environment variables
+  # This script extracts variables from the Cloud Shell URL and sets them as environment variables
 
   set -e
 
-  # Extract context from URL parameter (passed via --context flag)
-  if [ -n "$1" ]; then
-      CONTEXT="$1"
-  else
-      # Try to get context from cloudshell metadata
-      CONTEXT=$(curl -sf -H "Metadata-Flavor: Google"
-  "http://metadata.google.internal/computeMetadata/v1/instance/attributes/cloudshell_context" 2>/dev/null || echo "")
-  fi
+  echo "🔧 Setting up VectorPlane environment variables..."
 
-  if [ -n "$CONTEXT" ]; then
-      echo "Setting up VectorPlane environment variables..."
+  # The variables are encoded in the URL fragment
+  # We'll prompt the user to provide them since we can't access browser URL from shell
+  echo ""
+  echo "To set up the environment variables, please:"
+  echo "1. Look at your browser URL bar"
+  echo "2. Find the part after #vectorplane_vars="
+  echo "3. Copy that encoded string and paste it below"
+  echo ""
 
-      # Parse JSON context and extract vectorplane variables
-      # Use python3 to safely parse JSON
+  read -p "Paste the encoded variables string: " ENCODED_VARS
+
+  if [ -n "$ENCODED_VARS" ]; then
+      echo "Decoding variables..."
+
+      # Decode the base64 encoded JSON
       python3 << EOF
   import json
-  import os
+  import base64
   import sys
 
   try:
-      context = json.loads("""$CONTEXT""")
-      vectorplane_vars = context.get('vectorplane', {})
+      # Add padding if needed for base64
+      encoded = "$ENCODED_VARS"
+      padding = len(encoded) % 4
+      if padding:
+          encoded += '=' * (4 - padding)
 
-      # Write environment variables to a file that can be sourced
+      # Decode the JSON
+      decoded_json = base64.urlsafe_b64decode(encoded).decode()
+      variables = json.loads(decoded_json)
+
+      # Write environment variables to a file
       with open('.env_vectorplane', 'w') as f:
-          for key, value in vectorplane_vars.items():
-              # Export the variable
+          for key, value in variables.items():
               f.write(f'export {key}="{value}"\n')
-              print(f"Set {key}")
+              print(f"✓ Set {key}")
 
-      print("Environment variables configured successfully!")
+      print("\\n✅ Environment variables configured successfully!")
 
   except Exception as e:
-      print(f"Warning: Could not parse context: {e}")
+      print(f"❌ Error decoding variables: {e}")
+      print("Please make sure you copied the complete string after #vectorplane_vars=")
       sys.exit(1)
   EOF
 
       # Source the environment variables
       if [ -f ".env_vectorplane" ]; then
           source .env_vectorplane
-          echo "✅ VectorPlane environment variables loaded"
 
           # Verify required variables are set
           if [ -z "$TF_VAR_external_id" ]; then
-              echo "❌ Missing TF_VAR_external_id - onboarding session may have expired"
+              echo "❌ Missing TF_VAR_external_id - please check the encoded string"
               exit 1
           fi
 
+          echo ""
           echo "📋 Session ID: $TF_VAR_external_id"
           echo "🔗 Callback URL: $TF_VAR_vectorplane_callback_url"
+          echo ""
+          echo "🎉 Ready to run Terraform!"
+          echo ""
+          echo "Next steps:"
+          echo "  terraform init"
+          echo "  terraform apply"
       else
           echo "❌ Failed to create environment file"
           exit 1
       fi
   else
-      echo "❌ No context found - environment variables not available"
+      echo "❌ No variables provided"
       echo "Please make sure you opened Cloud Shell via the VectorPlane onboarding link"
       exit 1
   fi
