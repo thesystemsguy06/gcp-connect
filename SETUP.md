@@ -17,7 +17,7 @@ VectorPlane uses **Workload Identity Federation** for secure, keyless authentica
 
 ```bash
 # Load VectorPlane session variables
-./setup_env.sh
+bash ./setup_env.sh
 ```
 
 ### Step 2: Initialize Terraform
