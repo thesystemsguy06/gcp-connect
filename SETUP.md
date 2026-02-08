@@ -4,72 +4,67 @@
 
 <walkthrough-tutorial-duration duration="3"></walkthrough-tutorial-duration>
 
-## 🚀 Deploy VectorPlane GCP Integration
+## 🚀 Secure GCP Integration Deployment
 
-**System Architect Design: Action-First, Zero-Friction UX**
+**Enterprise-grade Workload Identity Federation setup with zero stored keys.**
 
-Your secure session is ready. Complete the integration with guided one-click deployment.
+Your secure session is ready. Choose your preferred deployment method:
 
-**Security Model:**
-- 🔐 Workload Identity Federation (no stored keys)
-- ⏱️ 15-minute secure session window
-- 🎯 Zero-trust AWS-to-GCP authentication
+**Option A:** Use the terminal auto-deployment (already running)
+**Option B:** Follow guided steps below
 
 ---
 
-## Step 1: Sync Your Secure Identity
+## Step 1: Sync VectorPlane Configuration
 
-<walkthrough-spotlight-pointer cssSelector="#terminal" text="Your terminal is ready for deployment">
+<walkthrough-spotlight-pointer cssSelector="#terminal" text="Terminal shows auto-deployment options">
 </walkthrough-spotlight-pointer>
 
-Click the button below to authenticate and sync your configuration:
+Authenticate and retrieve your secure configuration:
 
-<walkthrough-terminal-command command="./setup_env.sh">🔐 Sync VectorPlane Configuration</walkthrough-terminal-command>
+<walkthrough-terminal-command command="./setup_env.sh">🔐 Sync Configuration</walkthrough-terminal-command>
 
-**What this does:**
-- Authenticates with VectorPlane using your bearer token
-- Pulls secure configuration via API
-- Generates `terraform.tfvars.json` automatically
-- Validates session integrity
-
-**Expected output:** "✅ Configuration synced successfully"
+**What happens:**
+- Bearer token authentication with VectorPlane API
+- Secure configuration pull via HTTPS
+- Automatic `terraform.tfvars.json` generation
+- Session validation and error handling
 
 ---
 
-## Step 2: Initialize Terraform
+## Step 2: Initialize Terraform Workspace
 
 <walkthrough-terminal-command command="terraform init">📦 Initialize Terraform</walkthrough-terminal-command>
 
-Downloads the Google Cloud provider and initializes your workspace.
+Downloads Google Cloud provider and prepares deployment workspace.
 
 ---
 
-## Step 3: Deploy Integration
+## Step 3: Deploy Secure Integration
 
-<walkthrough-spotlight-pointer cssSelector="#terminal" text="Deploy with confidence - all variables are pre-configured">
-</walkthrough-spotlight-pointer>
+<walkthrough-terminal-command command="terraform apply">🚀 Deploy Integration</walkthrough-terminal-command>
 
-<walkthrough-terminal-command command="terraform apply -auto-approve">🚀 Deploy VectorPlane Integration</walkthrough-terminal-command>
+**Creates:**
+- **Workload Identity Pool** - External identity trust boundary
+- **Service Account** - VectorPlane's GCP access identity
+- **IAM Bindings** - Security Center scanning permissions
+- **Webhook Callback** - Automatic completion notification
 
-**What gets created:**
-- **Workload Identity Pool** - Trust boundary for VectorPlane
-- **Service Account** - Secure identity for resource access
-- **IAM Bindings** - Security Command Center permissions
-- **Webhook Notification** - Automatic completion signal
+**Type `yes` when prompted to confirm deployment.**
 
 ---
 
-## 🎉 Integration Complete!
+## ✅ Integration Complete
 
 <walkthrough-conclusion-trophy></walkthrough-conclusion-trophy>
 
-**Your GCP project is now connected to VectorPlane securely.**
+**Your GCP project is now connected to VectorPlane securely!**
 
-✅ **Zero keys exchanged** - Uses Workload Identity Federation
-✅ **Automatic discovery** - VectorPlane will scan your resources
-✅ **Dashboard ready** - Findings will appear in VectorPlane
-✅ **Customer controlled** - Run `terraform destroy` anytime
+- Zero service account keys exchanged
+- Workload Identity Federation active
+- VectorPlane dashboard will show findings
+- Run `terraform destroy` to remove anytime
 
 <walkthrough-footnote>
-**Need help?** Contact VectorPlane support with your session ID
+VectorPlane Enterprise Security Platform
 </walkthrough-footnote>
