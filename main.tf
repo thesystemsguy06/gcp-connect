@@ -1,16 +1,6 @@
 # VectorPlane GCP Onboarding Terraform Configuration
 # This creates the necessary GCP resources for VectorPlane security scanning
 
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.0"
-    }
-  }
-}
-
 # Use the current project by default
 data "google_client_config" "current" {}
 
@@ -29,38 +19,40 @@ data "google_folder" "current" {
   folder = var.gcp_scope_id
 }
 
+# Local values for consistent referencing
 locals {
   project_id     = data.google_project.current.project_id
   project_number = data.google_project.current.number
 
-  # Determine organization ID based on scope
-  organization_id = var.onboarding_scope == "ORGANIZATION" ? (
-    length(data.google_organization.current) > 0 ? data.google_organization.current[0].org_id : null
-  ) : (
-    var.onboarding_scope == "FOLDER" && length(data.google_folder.current) > 0 ?
-      data.google_folder.current[0].organization :
-      data.google_project.current.org_id
-  )
+  # Organization ID (for ORGANIZATION scope)
+  organization_id = var.onboarding_scope == "ORGANIZATION" && length(data.google_organization.current) > 0 ? data.google_organization.current[0].org_id : null
 
-  # Folder ID for FOLDER scope
-  folder_id = var.onboarding_scope == "FOLDER" ? var.gcp_scope_id : null
+  # Folder ID (for FOLDER scope)
+  folder_id = var.onboarding_scope == "FOLDER" && length(data.google_folder.current) > 0 ? data.google_folder.current[0].name : null
+
+  # Service account name and email
+  service_account_id    = "vectorplane-security"
+  service_account_email = "${local.service_account_id}@${local.project_id}.iam.gserviceaccount.com"
+
+  # Workload Identity Pool and Provider names
+  wif_pool_id     = "vectorplane-security-pool"
+  wif_provider_id = "vectorplane-aws-provider"
 }
 
 # 1. Workload Identity Pool
 resource "google_iam_workload_identity_pool" "vectorplane" {
-  project                   = local.project_id
-  workload_identity_pool_id = "vectorplane-security-pool"
+  workload_identity_pool_id = local.wif_pool_id
   display_name              = "VectorPlane Security Integration"
   description               = "Workload Identity Federation pool for VectorPlane security scanning"
+  disabled                  = false
 }
 
-# 2. AWS Provider for the WIF Pool
+# 2. Workload Identity Pool Provider (trusts VectorPlane's AWS account)
 resource "google_iam_workload_identity_pool_provider" "aws" {
-  project                            = local.project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.vectorplane.workload_identity_pool_id
-  workload_identity_pool_provider_id = "vectorplane-aws-provider"
+  workload_identity_pool_provider_id = local.wif_provider_id
   display_name                       = "VectorPlane AWS Provider"
-  description                        = "AWS provider for VectorPlane Workload Identity Federation"
+  description                        = "Trusts VectorPlane's AWS account for credential exchange"
 
   aws {
     account_id = var.vectorplane_aws_account_id
@@ -70,17 +62,15 @@ resource "google_iam_workload_identity_pool_provider" "aws" {
     "google.subject"        = "assertion.arn"
     "attribute.aws_role"    = "assertion.arn.extract('assumed-role/{role}/')"
     "attribute.aws_account" = "assertion.account"
-    "attribute.session_name" = "assertion.arn.extract('assumed-role/{role}/{session_name}')"
   }
 
-  # Restrict to VectorPlane's specific AWS account and role
-  attribute_condition = "attribute.aws_account == '${var.vectorplane_aws_account_id}' && attribute.aws_role == 'VectorPlaneWorker'"
+  # Security: Only accept tokens from VectorPlane's specific AWS account
+  attribute_condition = "attribute.aws_account == '${var.vectorplane_aws_account_id}'"
 }
 
 # 3. Service Account for VectorPlane
 resource "google_service_account" "vectorplane" {
-  project      = local.project_id
-  account_id   = "vectorplane-security"
+  account_id   = local.service_account_id
   display_name = "VectorPlane Security Scanner"
   description  = "Service account for VectorPlane to access GCP Security Command Center and resources"
 }
@@ -95,33 +85,40 @@ resource "google_service_account_iam_binding" "wif_impersonation" {
   ]
 }
 
-# 5. Security Command Center permissions based on scope
-resource "google_project_iam_member" "scc_viewer_project" {
-  count   = var.onboarding_scope == "PROJECT" ? 1 : 0
+# 5. Grant Security Command Center permissions
+resource "google_project_iam_member" "scc_findings_viewer" {
   project = local.project_id
   role    = "roles/securitycenter.findingsViewer"
   member  = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
-resource "google_folder_iam_member" "scc_viewer_folder" {
+# 6. Grant asset inventory permissions
+resource "google_project_iam_member" "browser" {
+  project = local.project_id
+  role    = "roles/browser"
+  member  = "serviceAccount:${google_service_account.vectorplane.email}"
+}
+
+# 7. Grant folder-level permissions for FOLDER scope
+resource "google_folder_iam_member" "folder_scc_viewer" {
   count  = var.onboarding_scope == "FOLDER" ? 1 : 0
   folder = local.folder_id
   role   = "roles/securitycenter.findingsViewer"
   member = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
-resource "google_organization_iam_member" "scc_viewer_org" {
-  count  = var.onboarding_scope == "ORGANIZATION" ? 1 : 0
-  org_id = local.organization_id
-  role   = "roles/securitycenter.findingsViewer"
-  member = "serviceAccount:${google_service_account.vectorplane.email}"
-}
-
-# 6. Resource Manager permissions for FOLDER and ORGANIZATION scopes
 resource "google_folder_iam_member" "folder_viewer" {
   count  = var.onboarding_scope == "FOLDER" ? 1 : 0
   folder = local.folder_id
   role   = "roles/resourcemanager.folderViewer"
+  member = "serviceAccount:${google_service_account.vectorplane.email}"
+}
+
+# 8. Grant organization-level permissions for ORGANIZATION scope
+resource "google_organization_iam_member" "org_scc_viewer" {
+  count  = var.onboarding_scope == "ORGANIZATION" ? 1 : 0
+  org_id = local.organization_id
+  role   = "roles/securitycenter.findingsViewer"
   member = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
@@ -132,36 +129,14 @@ resource "google_organization_iam_member" "org_viewer" {
   member = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
-resource "google_organization_iam_member" "folder_viewer_org" {
-  count  = var.onboarding_scope == "ORGANIZATION" ? 1 : 0
-  org_id = local.organization_id
-  role   = "roles/resourcemanager.folderViewer"
-  member = "serviceAccount:${google_service_account.vectorplane.email}"
-}
-
-# 7. Browser role for project listing (FOLDER and ORGANIZATION scopes)
-resource "google_folder_iam_member" "browser_folder" {
-  count  = var.onboarding_scope == "FOLDER" ? 1 : 0
-  folder = local.folder_id
-  role   = "roles/browser"
-  member = "serviceAccount:${google_service_account.vectorplane.email}"
-}
-
-resource "google_organization_iam_member" "browser_org" {
-  count  = var.onboarding_scope == "ORGANIZATION" ? 1 : 0
-  org_id = local.organization_id
-  role   = "roles/browser"
-  member = "serviceAccount:${google_service_account.vectorplane.email}"
-}
-
-# 8. Storage Object Viewer for accessing Terraform state files
-resource "google_project_iam_member" "storage_viewer" {
+# 9. Grant Terraform state access (for state file scanning)
+resource "google_project_iam_member" "storage_object_viewer" {
   project = local.project_id
   role    = "roles/storage.objectViewer"
   member  = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
-# 9. Webhook notification after successful deployment
+# 10. Webhook notification after successful deployment
 resource "null_resource" "webhook_notification" {
   depends_on = [
     google_iam_workload_identity_pool.vectorplane,
@@ -176,10 +151,10 @@ resource "null_resource" "webhook_notification" {
       set -e
 
       # Compute timestamp
-      TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      TIMESTAMP=$$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
       # Build the payload
-      PAYLOAD=$(cat <<EOF
+      PAYLOAD=$$(cat <<EOF
 {
   "external_id": "${var.external_id}",
   "project_number": "${local.project_number}",
@@ -194,33 +169,27 @@ EOF
       )
 
       # Compute HMAC signature: TIMESTAMP.PAYLOAD
-      SIGNATURE_INPUT="${TIMESTAMP}.${PAYLOAD}"
-      SIGNATURE=$(echo -n "${SIGNATURE_INPUT}" | openssl dgst -sha256 -hmac "${var.webhook_secret}" -binary | base64)
+      SIGNATURE_INPUT="$${TIMESTAMP}.$${PAYLOAD}"
+      SIGNATURE=$$(echo -n "$${SIGNATURE_INPUT}" | openssl dgst -sha256 -hmac "${var.webhook_secret}" -binary | base64)
 
       # Send the webhook
       echo "Sending webhook notification to VectorPlane..."
-      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+      HTTP_CODE=$$(curl -s -o /dev/null -w "%%{http_code}" \
         -X POST "${var.vectorplane_callback_url}" \
         -H "Content-Type: application/json" \
-        -H "X-VectorPlane-Signature: sha256=${SIGNATURE}" \
-        -H "X-VectorPlane-Timestamp: ${TIMESTAMP}" \
+        -H "X-VectorPlane-Signature: sha256=$${SIGNATURE}" \
+        -H "X-VectorPlane-Timestamp: $${TIMESTAMP}" \
         -H "X-VectorPlane-External-ID: ${var.external_id}" \
-        -d "${PAYLOAD}")
+        -d "$${PAYLOAD}")
 
-      if [ "$HTTP_CODE" -eq 200 ]; then
+      if [ "$$HTTP_CODE" -eq 200 ]; then
         echo "✅ Webhook sent successfully!"
         echo "🎉 GCP onboarding completed. You can close this Cloud Shell tab."
       else
-        echo "❌ Webhook failed with HTTP $HTTP_CODE"
+        echo "❌ Webhook failed with HTTP $$HTTP_CODE"
         echo "Please contact VectorPlane support with this error."
         exit 1
       fi
     EOT
-
-    environment = {
-      TF_VAR_external_id = var.external_id
-      TF_VAR_webhook_secret = var.webhook_secret
-      TF_VAR_vectorplane_callback_url = var.vectorplane_callback_url
-    }
   }
 }
