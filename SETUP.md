@@ -18,7 +18,7 @@ VectorPlane uses **Workload Identity Federation** for secure, keyless authentica
 
 ```bash
 # Configure Terraform variables from VectorPlane API
-bash ./setup.sh
+./setup_env.sh
 ```
 
 This script:
@@ -148,7 +148,7 @@ If you encounter issues:
 cat terraform.tfvars.json
 
 # Check session expiration
-./setup.sh  # Shows expiration time in output
+./setup_env.sh  # Shows expiration time in output
 ```
 
 ### Testing Connectivity
@@ -161,4 +161,4 @@ curl -H "Authorization: Bearer <your-token>" \
 
 ---
 
-**Ready to proceed?** Run `./setup.sh` to get started!
+**Ready to proceed?** Run `./setup_env.sh` to get started!
