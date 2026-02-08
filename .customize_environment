@@ -1,0 +1,43 @@
+#!/bin/bash
+# VectorPlane System Architect Solution: Auto-Prompt Terminal
+# This executes automatically when Cloud Shell environment initializes
+
+# Clear terminal and create focused user experience
+clear
+
+# Large, impossible-to-miss prompt
+echo ""
+echo "════════════════════════════════════════════════════════════════════"
+echo "🚀 VECTORPLANE GCP ONBOARDING READY"
+echo "════════════════════════════════════════════════════════════════════"
+echo ""
+echo "Your secure session is configured and ready to deploy."
+echo ""
+echo "👉 NEXT ACTION: Click the blue 'START' button in the right sidebar"
+echo "   ↳ This will open the guided tutorial with one-click deployment"
+echo ""
+echo "⚡ ADVANCED: Run './setup_env.sh' directly in this terminal"
+echo ""
+echo "🔐 Session expires in 15 minutes"
+echo ""
+echo "════════════════════════════════════════════════════════════════════"
+echo ""
+
+# Verify environment
+if [ -n "$VP_TOKEN" ]; then
+    echo "✅ VP_TOKEN: Configured"
+else
+    echo "❌ VP_TOKEN: Missing - restart from VectorPlane"
+    exit 1
+fi
+
+if [ -n "$VP_API_BASE" ]; then
+    echo "✅ VP_API_BASE: $VP_API_BASE"
+else
+    echo "❌ VP_API_BASE: Missing"
+    exit 1
+fi
+
+echo ""
+echo "🎯 Ready to proceed! Click START in the right sidebar."
+echo ""
