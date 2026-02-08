@@ -1,87 +1,75 @@
-# VectorPlane GCP Onboarding
+# VectorPlane GCP Integration
 
-<walkthrough-author name="VectorPlane" repositoryUrl="https://github.com/vectorplane/gcp-connect" tutorialName="gcp-onboarding"></walkthrough-author>
+<walkthrough-author name="VectorPlane" repositoryUrl="https://github.com/vectorplane/gcp-connect" tutorialName="vectorplane-gcp-onboarding"></walkthrough-author>
 
-<walkthrough-watcher-constant key="VP_TOKEN" value="{{VP_TOKEN}}"></walkthrough-watcher-constant>
+<walkthrough-tutorial-duration duration="3"></walkthrough-tutorial-duration>
 
-## Welcome to VectorPlane GCP Integration!
+## 🚀 Deploy VectorPlane GCP Integration
 
-<walkthrough-tutorial-duration duration="5"></walkthrough-tutorial-duration>
+**System Architect Design: Action-First, Zero-Friction UX**
 
-This setup creates secure access to your GCP project using Workload Identity Federation (WIF).
+Your secure session is ready. Complete the integration with guided one-click deployment.
 
-**Security highlights:**
-- ✅ No secrets exchanged - VectorPlane never stores GCP keys
-- ✅ Short-lived tokens - 15-minute setup sessions
-- ✅ Enterprise-grade sync - Bearer token authentication
-- ✅ Customer-controlled - Revoke access anytime
+**Security Model:**
+- 🔐 Workload Identity Federation (no stored keys)
+- ⏱️ 15-minute secure session window
+- 🎯 Zero-trust AWS-to-GCP authentication
 
-Click **Start** below to begin the guided setup.
+---
 
-## Step 1: Sync Configuration
+## Step 1: Sync Your Secure Identity
 
-<walkthrough-spotlight-pointer cssSelector="#terminal">Click here to focus the terminal</walkthrough-spotlight-pointer>
+<walkthrough-spotlight-pointer cssSelector="#terminal" text="Your terminal is ready for deployment">
+</walkthrough-spotlight-pointer>
 
-Your VectorPlane session is ready! Click the button below to sync your configuration automatically.
+Click the button below to authenticate and sync your configuration:
 
-<walkthrough-terminal-command command="./setup_env.sh">Sync VectorPlane Configuration</walkthrough-terminal-command>
+<walkthrough-terminal-command command="./setup_env.sh">🔐 Sync VectorPlane Configuration</walkthrough-terminal-command>
 
-This command will:
-- Authenticate with VectorPlane using your bearer token
-- Pull configuration via secure API endpoint
-- Generate `terraform.tfvars.json` for Terraform auto-loading
-- Validate session with enterprise-grade error messages
+**What this does:**
+- Authenticates with VectorPlane using your bearer token
+- Pulls secure configuration via API
+- Generates `terraform.tfvars.json` automatically
+- Validates session integrity
 
-**Expected output:** You should see "✅ Configuration synced successfully" when complete.
+**Expected output:** "✅ Configuration synced successfully"
+
+---
 
 ## Step 2: Initialize Terraform
 
-Now initialize Terraform with the synced configuration:
+<walkthrough-terminal-command command="terraform init">📦 Initialize Terraform</walkthrough-terminal-command>
 
-<walkthrough-terminal-command command="terraform init">Initialize Terraform</walkthrough-terminal-command>
+Downloads the Google Cloud provider and initializes your workspace.
 
-This downloads the required Google Cloud provider and prepares your workspace.
+---
 
-## Step 3: Review Deployment Plan
+## Step 3: Deploy Integration
 
-Review what resources will be created:
+<walkthrough-spotlight-pointer cssSelector="#terminal" text="Deploy with confidence - all variables are pre-configured">
+</walkthrough-spotlight-pointer>
 
-<walkthrough-terminal-command command="terraform plan">Review Terraform Plan</walkthrough-terminal-command>
+<walkthrough-terminal-command command="terraform apply -auto-approve">🚀 Deploy VectorPlane Integration</walkthrough-terminal-command>
 
-This shows you:
-- **Workload Identity Pool** - Trust boundary for external providers
-- **WIF Provider** - Trusts VectorPlane's AWS account (101460827772)
-- **Service Account** - Identity for VectorPlane to access your resources
-- **IAM Bindings** - Security Command Center and asset discovery permissions
+**What gets created:**
+- **Workload Identity Pool** - Trust boundary for VectorPlane
+- **Service Account** - Secure identity for resource access
+- **IAM Bindings** - Security Command Center permissions
+- **Webhook Notification** - Automatic completion signal
 
-## Step 4: Deploy Resources
+---
 
-Deploy the VectorPlane integration:
-
-<walkthrough-terminal-command command="terraform apply">Deploy VectorPlane Integration</walkthrough-terminal-command>
-
-**Important:** Type `yes` when prompted to confirm the deployment.
-
-This will:
-1. Create the GCP resources
-2. Send a secure webhook to VectorPlane
-3. Complete the integration automatically
-
-## 🎉 Success!
+## 🎉 Integration Complete!
 
 <walkthrough-conclusion-trophy></walkthrough-conclusion-trophy>
 
-Your GCP project is now connected to VectorPlane!
+**Your GCP project is now connected to VectorPlane securely.**
 
-**What happens next:**
-- VectorPlane can now scan your GCP resources securely
-- You'll see findings appear in your VectorPlane dashboard
-- The integration uses Workload Identity Federation (no stored keys)
-
-**To remove the integration:** Run `terraform destroy` anytime.
-
-**Need help?** Contact VectorPlane support with your session ID.
+✅ **Zero keys exchanged** - Uses Workload Identity Federation
+✅ **Automatic discovery** - VectorPlane will scan your resources
+✅ **Dashboard ready** - Findings will appear in VectorPlane
+✅ **Customer controlled** - Run `terraform destroy` anytime
 
 <walkthrough-footnote>
-Powered by VectorPlane Enterprise Security Platform
+**Need help?** Contact VectorPlane support with your session ID
 </walkthrough-footnote>
