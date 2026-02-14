@@ -69,7 +69,11 @@ while [ $ATTEMPT -lt $MAX_CODE_ATTEMPTS ]; do
     ERROR_MSG=$(echo "$BODY" | jq -r '.detail // "Unknown error"' 2>/dev/null || echo "$BODY")
     echo "Error: $ERROR_MSG"
 
-    if [ $ATTEMPT -lt $MAX_CODE_ATTEMPTS ]; then
+    if [ "$HTTP_CODE" = "410" ]; then
+        echo ""
+        echo "A newer code was generated. Check your VectorPlane dashboard."
+        echo ""
+    elif [ $ATTEMPT -lt $MAX_CODE_ATTEMPTS ]; then
         echo ""
         echo "Try again, or get a new code from your VectorPlane dashboard."
         echo ""
