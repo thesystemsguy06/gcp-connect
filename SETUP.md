@@ -4,69 +4,32 @@
 
 <walkthrough-tutorial-duration duration="3"></walkthrough-tutorial-duration>
 
-## 🔄 Initializing Secure Workspace
+## Welcome to VectorPlane
 
-**Loading your enterprise-grade GCP integration environment...**
+**Enterprise-grade Workload Identity Federation — zero stored keys.**
 
-<walkthrough-spotlight-pointer cssSelector="#terminal" text="Terminal is preparing your secure session">
-</walkthrough-spotlight-pointer>
+This deploys a secure trust relationship between VectorPlane and your GCP project. Everything runs in one step.
 
-⏳ **Cloning repository and configuring environment**
-- Repository: Downloading VectorPlane Terraform module
-- Environment: Validating VP_TOKEN and session credentials
-- Workspace: Preparing Cloud Shell file system
-
-**Once complete, you'll see deployment options in the terminal below.**
+**What gets created:**
+- Workload Identity Pool & Provider (cross-cloud trust)
+- Service Account with least-privilege permissions
+- Security Command Center access for finding ingestion
+- Automatic webhook callback to VectorPlane
 
 ---
 
-## 🚀 Deployment Ready
+## Deploy Integration
 
-**Enterprise-grade Workload Identity Federation setup with zero stored keys.**
+Click the button below to deploy. No further input required.
 
-Your secure session is ready. Choose your preferred deployment method:
+<walkthrough-terminal-command command="bash -c './setup_env.sh && terraform init -input=false && terraform apply -auto-approve -input=false'">🚀 Deploy VectorPlane Integration</walkthrough-terminal-command>
 
-**Option A:** Use the terminal auto-deployment (appears automatically)
-**Option B:** Follow guided steps below
+This will:
+1. Sync configuration from VectorPlane API
+2. Enable required GCP APIs
+3. Initialize and apply Terraform
 
----
-
-## Step 1: Sync VectorPlane Configuration
-
-<walkthrough-spotlight-pointer cssSelector="#terminal" text="Terminal shows auto-deployment options">
-</walkthrough-spotlight-pointer>
-
-Authenticate and retrieve your secure configuration:
-
-<walkthrough-terminal-command command="./setup_env.sh">🔐 Sync Configuration</walkthrough-terminal-command>
-
-**What happens:**
-- Bearer token authentication with VectorPlane API
-- Secure configuration pull via HTTPS
-- Automatic `terraform.tfvars.json` generation
-- Session validation and error handling
-
----
-
-## Step 2: Initialize Terraform Workspace
-
-<walkthrough-terminal-command command="terraform init">📦 Initialize Terraform</walkthrough-terminal-command>
-
-Downloads Google Cloud provider and prepares deployment workspace.
-
----
-
-## Step 3: Deploy Secure Integration
-
-<walkthrough-terminal-command command="terraform apply">🚀 Deploy Integration</walkthrough-terminal-command>
-
-**Creates:**
-- **Workload Identity Pool** - External identity trust boundary
-- **Service Account** - VectorPlane's GCP access identity
-- **IAM Bindings** - Security Center scanning permissions
-- **Webhook Callback** - Automatic completion notification
-
-**Type `yes` when prompted to confirm deployment.**
+**Estimated time: 2-3 minutes.** Watch the terminal for progress.
 
 ---
 
@@ -78,7 +41,7 @@ Downloads Google Cloud provider and prepares deployment workspace.
 
 - Zero service account keys exchanged
 - Workload Identity Federation active
-- VectorPlane dashboard will show findings
+- VectorPlane dashboard will show findings shortly
 - Run `terraform destroy` to remove anytime
 
 <walkthrough-footnote>
