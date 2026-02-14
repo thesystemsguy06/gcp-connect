@@ -244,6 +244,37 @@ resource "google_organization_iam_member" "browser" {
 }
 
 # -----------------------------------------------------------------------------
+# IAM Propagation Delay
+# -----------------------------------------------------------------------------
+# GCP IAM changes are eventually consistent across Google's global control
+# plane. Without this delay, the webhook fires before GCP STS can validate
+# tokens against the newly-created OIDC provider or honor IAM bindings.
+# 20 seconds is the industry-standard stabilization window for GCP IAM.
+
+resource "time_sleep" "iam_propagation" {
+  depends_on = [
+    # WIF providers must be propagated before token exchange
+    google_iam_workload_identity_pool_provider.aws,
+    google_iam_workload_identity_pool_provider.dev_oidc,
+    # SA impersonation bindings must be propagated
+    google_service_account_iam_member.wif_token_creator,
+    google_service_account_iam_member.wif_identity_user,
+    google_service_account_iam_member.dev_oidc_token_creator,
+    google_service_account_iam_member.dev_oidc_identity_user,
+    # SCC access bindings (for G6 pre-flight check)
+    google_project_iam_member.scc_findings_editor,
+    google_project_iam_member.storage_viewer,
+    google_organization_iam_member.scc_findings_editor,
+    google_organization_iam_member.storage_viewer,
+    google_organization_iam_member.folder_viewer,
+    google_organization_iam_member.org_viewer,
+    google_organization_iam_member.browser,
+  ]
+
+  create_duration = "20s"
+}
+
+# -----------------------------------------------------------------------------
 # 7. IAM Role Bindings - Folder Level
 # -----------------------------------------------------------------------------
 # These bindings apply when onboarding_scope is FOLDER.

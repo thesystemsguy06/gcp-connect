@@ -30,28 +30,16 @@ locals {
 # It sends the WIF configuration back to VectorPlane with cryptographic proof.
 
 resource "null_resource" "webhook_callback" {
-  # Ensure all IAM bindings are complete before calling webhook
+  # Wait for IAM propagation before calling webhook.
+  # time_sleep.iam_propagation transitively depends on all IAM resources
+  # and adds a 20-second stabilization window for GCP's control plane.
   depends_on = [
-    google_service_account_iam_member.wif_token_creator,
-    google_service_account_iam_member.wif_identity_user,
-    # Project-level bindings
-    google_project_iam_member.scc_findings_editor,
-    google_project_iam_member.storage_viewer,
-    # Organization-level bindings
-    google_organization_iam_member.scc_findings_editor,
-    google_organization_iam_member.storage_viewer,
-    google_organization_iam_member.folder_viewer,
-    google_organization_iam_member.org_viewer,
-    google_organization_iam_member.browser,
-    # Folder-level bindings
+    time_sleep.iam_propagation,
+    # Folder-level bindings (not in time_sleep since they're scope-conditional)
     google_folder_iam_member.scc_findings_editor,
     google_folder_iam_member.storage_viewer,
     google_folder_iam_member.folder_viewer,
     google_folder_iam_member.browser,
-    # Dev OIDC resources (conditional)
-    google_iam_workload_identity_pool_provider.dev_oidc,
-    google_service_account_iam_member.dev_oidc_token_creator,
-    google_service_account_iam_member.dev_oidc_identity_user,
   ]
 
   # Re-run if any key values change
