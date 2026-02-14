@@ -130,13 +130,36 @@ if ! gcloud services enable \
 fi
 echo "GCP APIs enabled."
 
-# ── Step 3: Terraform init ────────────────────────────────────────────
+# ── Step 3: Terraform init + adopt existing resources ────────────────
 echo ""
 echo "[3/4] Initializing Terraform..."
 if ! terraform init -input=false 2>&1; then
     report_error "terraform_init" "terraform init failed"
     echo "Error: Terraform initialization failed."
     exit 1
+fi
+
+# Import any resources from a previous partial run (fresh clone = no state).
+# Silently succeeds if the resource exists in GCP, silently fails otherwise.
+try_import() {
+    terraform import -input=false "$1" "$2" > /dev/null 2>&1 || true
+}
+
+WIF_POOL_ID=$(jq -r '.wif_pool_id' terraform.tfvars.json)
+WIF_PROVIDER_ID=$(jq -r '.wif_provider_id // "vectorplane-aws"' terraform.tfvars.json)
+SA_ID=$(jq -r '.service_account_id // "vectorplane-security"' terraform.tfvars.json)
+DEV_OIDC_URL=$(jq -r '.dev_oidc_issuer_url // ""' terraform.tfvars.json)
+
+echo "  Adopting any existing resources..."
+try_import "google_iam_workload_identity_pool.vectorplane" \
+    "projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL_ID"
+try_import "google_service_account.vectorplane" \
+    "projects/$PROJECT_ID/serviceAccounts/${SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
+try_import "google_iam_workload_identity_pool_provider.aws" \
+    "projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL_ID/providers/$WIF_PROVIDER_ID"
+if [ -n "$DEV_OIDC_URL" ]; then
+    try_import 'google_iam_workload_identity_pool_provider.dev_oidc[0]' \
+        "projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL_ID/providers/vectorplane-dev-oidc"
 fi
 
 # ── Step 4: Terraform apply ───────────────────────────────────────────
