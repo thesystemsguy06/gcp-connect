@@ -1,116 +1,116 @@
+# =============================================================================
 # VectorPlane GCP Onboarding - Outputs
-# These outputs provide key resource identifiers after successful deployment
+# =============================================================================
+# These outputs provide information about the created resources.
+# Useful for manual verification if automatic webhook fails.
+# =============================================================================
 
-# Project information
-output "project_id" {
-  description = "GCP Project ID where resources were created"
-  value       = local.project_id
+output "setup_status" {
+  description = "Human-readable setup completion message"
+  value       = "VectorPlane GCP integration configured successfully"
 }
 
-output "project_number" {
-  description = "GCP Project Number"
-  value       = local.project_number
-}
+# -----------------------------------------------------------------------------
+# Workload Identity Federation Details
+# -----------------------------------------------------------------------------
 
-output "organization_id" {
-  description = "GCP Organization ID (if applicable)"
-  value       = local.organization_id
-}
-
-output "folder_id" {
-  description = "GCP Folder ID (for FOLDER scope)"
-  value       = local.folder_id
-}
-
-# Workload Identity Federation resources
 output "workload_identity_pool_id" {
-  description = "Workload Identity Pool ID"
+  description = "The Workload Identity Pool ID"
   value       = google_iam_workload_identity_pool.vectorplane.workload_identity_pool_id
 }
 
 output "workload_identity_pool_name" {
-  description = "Full resource name of the Workload Identity Pool"
+  description = "The full resource name of the Workload Identity Pool"
   value       = google_iam_workload_identity_pool.vectorplane.name
 }
 
-output "workload_identity_pool_provider_id" {
-  description = "Workload Identity Pool Provider ID"
+output "workload_identity_provider_id" {
+  description = "The Workload Identity Pool Provider ID"
   value       = google_iam_workload_identity_pool_provider.aws.workload_identity_pool_provider_id
 }
 
-output "workload_identity_pool_provider_name" {
-  description = "Full resource name of the Workload Identity Pool Provider"
-  value       = google_iam_workload_identity_pool_provider.aws.name
+output "workload_identity_provider_name" {
+  description = "The full resource name of the WIF Provider (used for token exchange)"
+  value       = local.wif_provider_name
 }
 
-# Service Account
-output "service_account_id" {
-  description = "Service Account ID"
-  value       = google_service_account.vectorplane.account_id
-}
+# -----------------------------------------------------------------------------
+# Service Account Details
+# -----------------------------------------------------------------------------
 
 output "service_account_email" {
-  description = "Service Account email address"
+  description = "The Service Account email that VectorPlane will impersonate"
   value       = google_service_account.vectorplane.email
 }
 
 output "service_account_unique_id" {
-  description = "Service Account unique ID"
+  description = "The unique ID of the Service Account"
   value       = google_service_account.vectorplane.unique_id
 }
 
-# Configuration summary
+# -----------------------------------------------------------------------------
+# Project/Organization Details
+# -----------------------------------------------------------------------------
+
+output "project_id" {
+  description = "The GCP Project ID where resources were created (auto-detected if not provided)"
+  value       = local.effective_project_id
+}
+
+output "project_number" {
+  description = "The GCP Project Number"
+  value       = local.project_number
+}
+
 output "onboarding_scope" {
-  description = "Onboarding scope level (PROJECT, FOLDER, or ORGANIZATION)"
+  description = "The scope of the integration (PROJECT or ORGANIZATION)"
   value       = var.onboarding_scope
 }
 
-output "external_id" {
-  description = "VectorPlane session external ID"
-  value       = var.external_id
+output "organization_id" {
+  description = "The GCP Organization ID (if ORGANIZATION scope)"
+  value       = var.onboarding_scope == "ORGANIZATION" ? (var.organization_id != "" ? var.organization_id : var.gcp_scope_id) : null
 }
 
-# VectorPlane connection details
-output "vectorplane_connection_info" {
-  description = "Key information for VectorPlane integration"
-  value = {
-    project_id                        = local.project_id
-    project_number                   = local.project_number
-    organization_id                  = local.organization_id
-    folder_id                        = local.folder_id
-    workload_identity_pool_provider  = google_iam_workload_identity_pool_provider.aws.name
-    service_account_email           = google_service_account.vectorplane.email
-    onboarding_scope               = var.onboarding_scope
-    external_id                    = var.external_id
-  }
-  sensitive = false
+output "folder_id" {
+  description = "The GCP Folder ID (if FOLDER scope)"
+  value       = var.onboarding_scope == "FOLDER" ? var.gcp_scope_id : null
 }
 
-# Verification commands
-output "verification_commands" {
-  description = "Commands to verify the setup"
-  value = {
-    test_wif_pool = "gcloud iam workload-identity-pools describe ${google_iam_workload_identity_pool.vectorplane.workload_identity_pool_id} --location=global --project=${local.project_id}"
-    test_service_account = "gcloud iam service-accounts describe ${google_service_account.vectorplane.email} --project=${local.project_id}"
-    list_iam_bindings = "gcloud projects get-iam-policy ${local.project_id} --flatten='bindings[].members' --filter='bindings.members:serviceAccount:${google_service_account.vectorplane.email}'"
-  }
+# -----------------------------------------------------------------------------
+# IAM Roles Granted
+# -----------------------------------------------------------------------------
+
+output "granted_roles" {
+  description = "List of IAM roles granted to the VectorPlane Service Account"
+  value = compact([
+    "roles/securitycenter.findingsEditor",
+    var.enable_state_file_access ? "roles/storage.objectViewer" : null,
+    # Organization scope roles
+    var.onboarding_scope == "ORGANIZATION" && var.enable_folder_discovery ? "roles/resourcemanager.folderViewer" : null,
+    var.onboarding_scope == "ORGANIZATION" && var.enable_folder_discovery ? "roles/resourcemanager.organizationViewer" : null,
+    var.onboarding_scope == "ORGANIZATION" ? "roles/browser" : null,
+    # Folder scope roles
+    var.onboarding_scope == "FOLDER" && var.enable_folder_discovery ? "roles/resourcemanager.folderViewer" : null,
+    var.onboarding_scope == "FOLDER" ? "roles/browser" : null,
+  ])
 }
 
-# Security note
-output "security_note" {
-  description = "Important security information"
-  value = <<-EOT
-    ✅ VectorPlane GCP onboarding completed successfully!
+# -----------------------------------------------------------------------------
+# Manual Verification Commands
+# -----------------------------------------------------------------------------
 
-    Security Summary:
-    - No long-lived credentials were created or exchanged
-    - VectorPlane uses Workload Identity Federation for secure, temporary access
-    - Access tokens expire after 1 hour and must be re-requested
-    - You can revoke access at any time by deleting the Workload Identity Pool
-
-    To revoke access:
-    gcloud iam workload-identity-pools delete ${google_iam_workload_identity_pool.vectorplane.workload_identity_pool_id} --location=global --project=${local.project_id}
-
-    VectorPlane will now begin scanning your GCP environment for security findings.
+output "verification_command" {
+  description = "Command to manually verify the WIF setup works"
+  value       = <<-EOT
+    # From an AWS environment with VectorPlane credentials, run:
+    gcloud auth print-access-token \
+      --impersonate-service-account=${google_service_account.vectorplane.email}
   EOT
+}
+
+output "external_id" {
+  description = "The VectorPlane session ID for this onboarding"
+  value       = var.external_id
+  sensitive   = false
 }
