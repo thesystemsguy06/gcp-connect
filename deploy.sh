@@ -160,6 +160,9 @@ try_import "google_iam_workload_identity_pool_provider.aws" \
 if [ -n "$DEV_OIDC_URL" ]; then
     try_import 'google_iam_workload_identity_pool_provider.dev_oidc[0]' \
         "projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL_ID/providers/vectorplane-dev-oidc"
+    # Force recreation so GCP refetches JWKS with the current signing key.
+    # The OIDC issuer's key may have changed since the provider was created.
+    terraform taint 'google_iam_workload_identity_pool_provider.dev_oidc[0]' > /dev/null 2>&1 || true
 fi
 
 # ── Step 4: Terraform apply ───────────────────────────────────────────
