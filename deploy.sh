@@ -2,6 +2,9 @@
 # VectorPlane GCP Integration — Device Flow Onboarding (RFC 8628)
 # Exchanges a pairing code for the full Terraform configuration,
 # then deploys Workload Identity Federation via Terraform.
+#
+# Idempotent: safe to re-run after partial failures. Terraform state
+# is stored in a GCS bucket so retries pick up where they left off.
 
 set -e
 
@@ -60,7 +63,7 @@ while [ $ATTEMPT -lt $MAX_CODE_ATTEMPTS ]; do
     fi
 
     echo ""
-    echo "[1/4] Authenticating with VectorPlane..."
+    echo "[1/5] Authenticating with VectorPlane..."
 
     RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$EXCHANGE_URL" \
         -H "Content-Type: application/json" \
@@ -106,11 +109,10 @@ PROJECT_ID=$(jq -r '.project_id' terraform.tfvars.json)
 echo "Identity verified. Project: $PROJECT_ID"
 
 # ── From here on, errors are reported to the dashboard ────────────────
-# trap ensures the dashboard knows what went wrong if any step fails
 
 # ── Step 2: Align GCP project + enable APIs ───────────────────────────
 echo ""
-echo "[2/4] Preparing GCP project..."
+echo "[2/5] Preparing GCP project..."
 
 CURRENT_PROJECT=$(gcloud config get-value project 2>/dev/null || echo "")
 if [ "$CURRENT_PROJECT" != "$PROJECT_ID" ]; then
@@ -123,6 +125,7 @@ if ! gcloud services enable \
     sts.googleapis.com \
     iamcredentials.googleapis.com \
     securitycenter.googleapis.com \
+    storage.googleapis.com \
     --quiet 2>&1; then
     report_error "api_enable" "Failed to enable required GCP APIs. Check project permissions."
     echo "Error: Failed to enable GCP APIs. You may need the Owner or Editor role."
@@ -130,44 +133,53 @@ if ! gcloud services enable \
 fi
 echo "GCP APIs enabled."
 
-# ── Step 3: Terraform init + adopt existing resources ────────────────
+# ── Step 3: Set up remote state backend (GCS) ────────────────────────
+# Terraform state is stored in GCS so retries after partial failures
+# "just work" — no import hacks needed. The bucket is created once
+# and reused across sessions.
 echo ""
-echo "[3/4] Initializing Terraform..."
-if ! terraform init -input=false 2>&1; then
+echo "[3/5] Configuring state backend..."
+
+STATE_BUCKET="${PROJECT_ID}-vectorplane-tf-state"
+
+# Create bucket if it doesn't exist (idempotent)
+if ! gcloud storage buckets describe "gs://${STATE_BUCKET}" --project="$PROJECT_ID" > /dev/null 2>&1; then
+    if ! gcloud storage buckets create "gs://${STATE_BUCKET}" \
+        --project="$PROJECT_ID" \
+        --location=us \
+        --uniform-bucket-level-access \
+        --quiet 2>&1; then
+        report_error "state_bucket" "Failed to create Terraform state bucket"
+        echo "Error: Could not create state bucket. You may need Storage Admin permissions."
+        exit 1
+    fi
+    echo "  Created state bucket: ${STATE_BUCKET}"
+else
+    echo "  Using existing state bucket: ${STATE_BUCKET}"
+fi
+
+# Generate backend config for Terraform
+cat > backend.tf <<BACKEND_EOF
+terraform {
+  backend "gcs" {
+    bucket = "${STATE_BUCKET}"
+    prefix = "vectorplane/gcp-onboarding"
+  }
+}
+BACKEND_EOF
+
+# ── Step 4: Terraform init ────────────────────────────────────────────
+echo ""
+echo "[4/5] Initializing Terraform..."
+if ! terraform init -input=false -reconfigure 2>&1; then
     report_error "terraform_init" "terraform init failed"
     echo "Error: Terraform initialization failed."
     exit 1
 fi
 
-# Import any resources from a previous partial run (fresh clone = no state).
-# Silently succeeds if the resource exists in GCP, silently fails otherwise.
-try_import() {
-    terraform import -input=false "$1" "$2" > /dev/null 2>&1 || true
-}
-
-WIF_POOL_ID=$(jq -r '.wif_pool_id' terraform.tfvars.json)
-WIF_PROVIDER_ID=$(jq -r '.wif_provider_id // "vectorplane-aws"' terraform.tfvars.json)
-SA_ID=$(jq -r '.service_account_id // "vectorplane-security"' terraform.tfvars.json)
-DEV_OIDC_URL=$(jq -r '.dev_oidc_issuer_url // ""' terraform.tfvars.json)
-
-echo "  Adopting any existing resources..."
-try_import "google_iam_workload_identity_pool.vectorplane" \
-    "projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL_ID"
-try_import "google_service_account.vectorplane" \
-    "projects/$PROJECT_ID/serviceAccounts/${SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
-try_import "google_iam_workload_identity_pool_provider.aws" \
-    "projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL_ID/providers/$WIF_PROVIDER_ID"
-if [ -n "$DEV_OIDC_URL" ]; then
-    try_import 'google_iam_workload_identity_pool_provider.dev_oidc[0]' \
-        "projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL_ID/providers/vectorplane-dev-oidc"
-    # Force recreation so GCP refetches JWKS with the current signing key.
-    # The OIDC issuer's key may have changed since the provider was created.
-    terraform taint 'google_iam_workload_identity_pool_provider.dev_oidc[0]' > /dev/null 2>&1 || true
-fi
-
-# ── Step 4: Terraform apply ───────────────────────────────────────────
+# ── Step 5: Terraform apply ───────────────────────────────────────────
 echo ""
-echo "[4/4] Deploying integration..."
+echo "[5/5] Deploying integration..."
 TF_OUTPUT=""
 if TF_OUTPUT=$(terraform apply -auto-approve -input=false 2>&1); then
     echo "$TF_OUTPUT"

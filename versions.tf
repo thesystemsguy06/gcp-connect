@@ -16,11 +16,6 @@ terraform {
     }
   }
 
-  # Optional: Configure remote state backend
-  # Uncomment and customize if you want to store state remotely
-  #
-  # backend "gcs" {
-  #   bucket  = "your-terraform-state-bucket"
-  #   prefix  = "vectorplane/gcp-onboarding"
-  # }
+  # Remote state backend is configured dynamically by deploy.sh
+  # (generates backend.tf with project-specific GCS bucket)
 }
