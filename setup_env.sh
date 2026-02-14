@@ -68,7 +68,18 @@ fi
 
 echo "✅ Configuration synced successfully."
 
-# 6. Show the configuration for verification (enterprise transparency)
+# 6. Enable required GCP APIs
+echo "🔧 Enabling required GCP APIs..."
+gcloud services enable \
+    iam.googleapis.com \
+    cloudresourcemanager.googleapis.com \
+    sts.googleapis.com \
+    iamcredentials.googleapis.com \
+    securitycenter.googleapis.com \
+    --quiet
+echo "✅ GCP APIs enabled"
+
+# 7. Show the configuration for verification (enterprise transparency)
 echo ""
 echo "📋 Terraform Variables Loaded:"
 echo "----------------------------------------"
