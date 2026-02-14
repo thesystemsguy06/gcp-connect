@@ -18,9 +18,16 @@ report_error() {
     local error_type="${1:-unexpected}"
     local detail="${2:-}"
     if [ -n "$SESSION_ID" ]; then
+        # Use jq to safely encode the detail string (handles quotes, newlines, special chars)
+        local payload
+        payload=$(jq -n \
+            --arg sid "$SESSION_ID" \
+            --arg etype "$error_type" \
+            --arg det "$detail" \
+            '{session_id: $sid, error_type: $etype, detail: $det}')
         curl -s -X POST "$ERROR_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"session_id\": \"$SESSION_ID\", \"error_type\": \"$error_type\", \"detail\": \"$detail\"}" \
+            -d "$payload" \
             > /dev/null 2>&1 || true
     fi
 }

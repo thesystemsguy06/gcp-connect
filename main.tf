@@ -114,7 +114,7 @@ resource "google_iam_workload_identity_pool_provider" "dev_oidc" {
   workload_identity_pool_provider_id = "vectorplane-dev-oidc"
   project                            = var.onboarding_scope == "PROJECT" ? local.effective_project_id : null
 
-  display_name = "VectorPlane Dev OIDC (Local Testing)"
+  display_name = "VectorPlane Dev OIDC"
   description  = "Trusts VectorPlane's local Mock OIDC Provider for development testing"
 
   oidc {
