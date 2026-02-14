@@ -3,8 +3,10 @@
 # Exchanges a pairing code for the full Terraform configuration,
 # then deploys Workload Identity Federation via Terraform.
 #
-# Idempotent: safe to re-run after partial failures. Terraform state
-# is stored in a GCS bucket so retries pick up where they left off.
+# Idempotent: safe to re-run after partial failures.
+#   - Terraform state is stored in a GCS bucket (survives Cloud Shell restarts)
+#   - Pre-flight recovery handles soft-deleted and orphaned GCP resources
+#   - Every failure reports clean error details to the VectorPlane dashboard
 
 set -e
 
@@ -16,12 +18,21 @@ ERROR_URL="${API_BASE}/api/v1/onboarding/gcp/report-error"
 # Session ID — set after successful pairing exchange
 SESSION_ID=""
 
-# ── Error reporting (sends telemetry to dashboard on failure) ─────────
+# ── Helpers ───────────────────────────────────────────────────────────
+
+# Strip ANSI escape codes and Terraform box-drawing characters.
+# Terraform wraps errors in ANSI color codes and Unicode box chars
+# that are unreadable in a web dashboard.
+clean_tf_output() {
+    sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r│' | sed 's/^[[:space:]]*//'
+}
+
+# Send error telemetry to VectorPlane dashboard.
+# Uses jq for safe JSON encoding (handles quotes, newlines, special chars).
 report_error() {
     local error_type="${1:-unexpected}"
     local detail="${2:-}"
     if [ -n "$SESSION_ID" ]; then
-        # Use jq to safely encode the detail string (handles quotes, newlines, special chars)
         local payload
         payload=$(jq -n \
             --arg sid "$SESSION_ID" \
@@ -135,8 +146,7 @@ echo "GCP APIs enabled."
 
 # ── Step 3: Set up remote state backend (GCS) ────────────────────────
 # Terraform state is stored in GCS so retries after partial failures
-# "just work" — no import hacks needed. The bucket is created once
-# and reused across sessions.
+# "just work" — Cloud Shell sessions are ephemeral but GCS persists.
 echo ""
 echo "[3/5] Configuring state backend..."
 
@@ -168,13 +178,101 @@ terraform {
 }
 BACKEND_EOF
 
-# ── Step 4: Terraform init ────────────────────────────────────────────
+# ── Step 4: Terraform init + pre-flight recovery ─────────────────────
 echo ""
 echo "[4/5] Initializing Terraform..."
 if ! terraform init -input=false -reconfigure 2>&1; then
     report_error "terraform_init" "terraform init failed"
     echo "Error: Terraform initialization failed."
     exit 1
+fi
+
+# --- Pre-flight resource recovery ---
+# Handles two edge cases that would otherwise cause 409 conflicts:
+#   (a) Resources exist in GCP but not in Terraform state (orphaned from
+#       a previous session that used a different state backend)
+#   (b) Resources were soft-deleted (GCP retains for 30 days) — must be
+#       undeleted before Terraform can manage them again
+#
+# If state already has resources (normal retry), this block is skipped entirely.
+
+RESOURCES=$(terraform state list 2>/dev/null || echo "")
+if [ -z "$RESOURCES" ]; then
+    echo "  Reconciling with existing GCP resources..."
+
+    # Read resource IDs from tfvars
+    WIF_POOL_ID=$(jq -r '.wif_pool_id' terraform.tfvars.json)
+    WIF_PROVIDER_ID=$(jq -r '.wif_provider_id' terraform.tfvars.json)
+    DEV_OIDC_URL=$(jq -r '.dev_oidc_issuer_url // ""' terraform.tfvars.json)
+    SA_ID="vectorplane-security"
+    SA_EMAIL="${SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
+    POOL_PATH="projects/${PROJECT_ID}/locations/global/workloadIdentityPools/${WIF_POOL_ID}"
+
+    # Phase 1: Undelete soft-deleted resources (idempotent — fails silently
+    # if the resource is already active or was never created)
+    if gcloud iam workload-identity-pools undelete "$WIF_POOL_ID" \
+        --location=global --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
+        echo "    Restored soft-deleted WIF pool"
+        sleep 3  # Wait for pool restoration to propagate
+    fi
+
+    if gcloud iam workload-identity-pools providers undelete "$WIF_PROVIDER_ID" \
+        --workload-identity-pool="$WIF_POOL_ID" \
+        --location=global --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
+        echo "    Restored soft-deleted AWS provider"
+    fi
+
+    if [ -n "$DEV_OIDC_URL" ]; then
+        if gcloud iam workload-identity-pools providers undelete "vectorplane-dev-oidc" \
+            --workload-identity-pool="$WIF_POOL_ID" \
+            --location=global --project="$PROJECT_ID" --quiet > /dev/null 2>&1; then
+            echo "    Restored soft-deleted OIDC provider"
+        fi
+    fi
+
+    # Phase 2: Import existing resources into Terraform state.
+    # Each import succeeds if the resource exists in GCP, fails silently if not.
+    # This lets terraform apply update/no-op existing resources instead of
+    # trying to create them (which would 409).
+    IMPORTED=0
+
+    if terraform import -input=false \
+        "google_iam_workload_identity_pool.vectorplane" \
+        "$POOL_PATH" > /dev/null 2>&1; then
+        echo "    Imported WIF pool"
+        IMPORTED=$((IMPORTED + 1))
+    fi
+
+    if terraform import -input=false \
+        "google_iam_workload_identity_pool_provider.aws" \
+        "${POOL_PATH}/providers/${WIF_PROVIDER_ID}" > /dev/null 2>&1; then
+        echo "    Imported AWS provider"
+        IMPORTED=$((IMPORTED + 1))
+    fi
+
+    if [ -n "$DEV_OIDC_URL" ]; then
+        if terraform import -input=false \
+            'google_iam_workload_identity_pool_provider.dev_oidc[0]' \
+            "${POOL_PATH}/providers/vectorplane-dev-oidc" > /dev/null 2>&1; then
+            echo "    Imported OIDC provider"
+            IMPORTED=$((IMPORTED + 1))
+        fi
+    fi
+
+    if terraform import -input=false \
+        "google_service_account.vectorplane" \
+        "projects/${PROJECT_ID}/serviceAccounts/${SA_EMAIL}" > /dev/null 2>&1; then
+        echo "    Imported service account"
+        IMPORTED=$((IMPORTED + 1))
+    fi
+
+    if [ $IMPORTED -gt 0 ]; then
+        echo "  Recovered $IMPORTED existing resource(s) into state."
+    else
+        echo "  No existing resources found. Fresh deployment."
+    fi
+else
+    echo "  State loaded ($(echo "$RESOURCES" | wc -l | tr -d ' ') resources). Resuming."
 fi
 
 # ── Step 5: Terraform apply ───────────────────────────────────────────
@@ -195,8 +293,8 @@ if TF_OUTPUT=$(terraform apply -auto-approve -input=false 2>&1); then
     echo "================================================"
 else
     echo "$TF_OUTPUT"
-    # Extract last meaningful error line
-    LAST_ERROR=$(echo "$TF_OUTPUT" | grep -i "error" | tail -1 | head -c 500)
+    # Extract clean error lines for dashboard (strip ANSI codes + box chars)
+    LAST_ERROR=$(echo "$TF_OUTPUT" | clean_tf_output | grep -i "error" | tail -3 | head -c 500)
     report_error "terraform_apply" "$LAST_ERROR"
     echo ""
     echo "Error: Deployment failed. Your VectorPlane dashboard will show details."
