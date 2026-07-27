@@ -36,8 +36,15 @@ locals {
   # Project number for WIF audience
   project_number = var.onboarding_scope == "PROJECT" ? data.google_project.current[0].number : null
 
-  # Full WIF pool name for IAM bindings
-  wif_pool_name = "projects/${local.project_number}/locations/global/workloadIdentityPools/${var.wif_pool_id}"
+  # Full WIF pool name for IAM bindings.
+  #
+  # This MUST reference the pool resource's attribute rather than var.wif_pool_id, even
+  # though the two hold the same string. Terraform builds its dependency graph from
+  # references: interpolating the plain variable made every IAM binding below look
+  # independent of the pool, so on a run that replaced the pool Terraform created the
+  # bindings first and the apply died with "Identity Pool does not exist" against a pool
+  # it was about to create seconds later. Referencing the resource is what orders them.
+  wif_pool_name = "projects/${local.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.vectorplane.workload_identity_pool_id}"
 
   # Full WIF provider name for token exchange
   wif_provider_name = "${local.wif_pool_name}/providers/${var.wif_provider_id}"
@@ -145,7 +152,17 @@ resource "google_service_account" "vectorplane" {
 # CRITICAL: Without this, the token exchange will fail with 403.
 # Grants the WIF principal permission to generate tokens for this SA.
 
+# GCP returns success for a pool creation before that pool is referenceable in an IAM
+# policy binding. Correct ordering alone therefore still races: the binding can be
+# rejected with "Identity Pool does not exist" against a pool that demonstrably exists.
+# Ten seconds is cheap next to a failed apply, which costs the operator a full re-run.
+resource "time_sleep" "wif_pool_ready" {
+  depends_on      = [google_iam_workload_identity_pool.vectorplane]
+  create_duration = "10s"
+}
+
 resource "google_service_account_iam_member" "wif_token_creator" {
+  depends_on         = [time_sleep.wif_pool_ready]
   service_account_id = google_service_account.vectorplane.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = local.wif_principal
@@ -153,6 +170,7 @@ resource "google_service_account_iam_member" "wif_token_creator" {
 
 # Also allow workloadIdentityUser for the impersonation flow
 resource "google_service_account_iam_member" "wif_identity_user" {
+  depends_on         = [time_sleep.wif_pool_ready]
   service_account_id = google_service_account.vectorplane.name
   role               = "roles/iam.workloadIdentityUser"
   member             = local.wif_principal
@@ -163,6 +181,7 @@ resource "google_service_account_iam_member" "wif_identity_user" {
 # that the production wif_principal is scoped to.
 resource "google_service_account_iam_member" "dev_oidc_token_creator" {
   count              = var.dev_oidc_issuer_url != "" ? 1 : 0
+  depends_on         = [time_sleep.wif_pool_ready]
   service_account_id = google_service_account.vectorplane.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = "principalSet://iam.googleapis.com/${local.wif_pool_name}/*"
@@ -170,6 +189,7 @@ resource "google_service_account_iam_member" "dev_oidc_token_creator" {
 
 resource "google_service_account_iam_member" "dev_oidc_identity_user" {
   count              = var.dev_oidc_issuer_url != "" ? 1 : 0
+  depends_on         = [time_sleep.wif_pool_ready]
   service_account_id = google_service_account.vectorplane.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${local.wif_pool_name}/*"
