@@ -240,10 +240,33 @@ preflight_project() {
     if [ -z "$missing" ]; then
         _check_pass "permissions" "all required permissions present"
     else
-        _check_fail "permissions" "missing: ${missing}" \
-            "Grant the missing permissions. The simplest grant that covers them:" \
-            "  gcloud projects add-iam-policy-binding $project \\" \
-            "    --member=user:$account --role=roles/owner"
+        # Whether the user can fix this themselves turns on ONE of the missing
+        # permissions. Granting a role is itself an IAM write, so if
+        # setIamPolicy is what they are missing, handing them
+        # `add-iam-policy-binding` gives them a command that fails with the same
+        # error they are already looking at — a remedy that cannot be applied is
+        # worse than none, because it costs a round trip to discover.
+        if echo "$missing" | grep -q "resourcemanager.projects.setIamPolicy"; then
+            _check_fail "permissions" "missing: ${missing}" \
+                "You cannot grant these to yourself: setIamPolicy is among the" \
+                "missing permissions, so any add-iam-policy-binding you run will" \
+                "fail the same way. Someone else has to grant it." \
+                "" \
+                "Ask a project Owner, or an Organization Administrator, to run:" \
+                "  gcloud projects add-iam-policy-binding $project \\" \
+                "    --member=user:$account --role=roles/owner" \
+                "" \
+                "If you ARE the Cloud Identity super admin and this still fails:" \
+                "super admin is not a GCP IAM role and grants no project access." \
+                "Grant yourself roles/resourcemanager.organizationAdmin at the" \
+                "organization level in the console (IAM & Admin > IAM, select the" \
+                "organization, not the project), then re-run."
+        else
+            _check_fail "permissions" "missing: ${missing}" \
+                "Grant the missing permissions. The simplest grant that covers them:" \
+                "  gcloud projects add-iam-policy-binding $project \\" \
+                "    --member=user:$account --role=roles/owner"
+        fi
         if [ "$scope" = "ORGANIZATION" ]; then
             _check_fail "org permissions" "ORGANIZATION scope needs org-level IAM admin" \
                 "Project Owner does NOT confer this. At the organization level you need:" \
@@ -267,39 +290,66 @@ preflight_project() {
 # infrastructure without confirmation.
 preflight_existing_resources() {
     local project="$1" pool_id="$2"
-    local found=""
+    local imported="" reused=""
 
+    # Split by what actually happens to each, because the two are different
+    # mechanisms and only one of them is "adoption". Saying ADOPT about the state
+    # bucket would be the exact defect this preflight exists to prevent: the
+    # bucket is not a Terraform resource at all — no google_storage_bucket exists
+    # in any .tf — so it can never be imported into state. It is the GCS *backend*
+    # that holds the state, created by gcloud in step 3.
     gcloud iam workload-identity-pools describe "$pool_id" \
         --location=global --project="$project" > /dev/null 2>&1 \
-        && found="${found}WIF pool '$pool_id', "
+        && imported="${imported}WIF pool '$pool_id', "
 
     gcloud iam service-accounts describe \
         "vectorplane-security@${project}.iam.gserviceaccount.com" \
         --project="$project" > /dev/null 2>&1 \
-        && found="${found}service account 'vectorplane-security', "
+        && imported="${imported}service account 'vectorplane-security', "
 
     gcloud storage buckets describe "gs://${project}-vectorplane-tf-state" \
         --project="$project" > /dev/null 2>&1 \
-        && found="${found}state bucket, "
+        && reused="state bucket gs://${project}-vectorplane-tf-state"
 
-    if [ -z "$found" ]; then
+    if [ -z "$imported" ] && [ -z "$reused" ]; then
         _check_pass "existing resources" "none — this is a fresh setup"
         return
     fi
 
-    # Not a failure: adoption is the correct and non-destructive outcome. But it is a
-    # material fact about the user's project and they should read it before it happens.
-    printf '  \033[33m!\033[0m %-22s %s\n' "existing resources" "${found%, }"
-    printf '    These are from an earlier VectorPlane setup attempt.\n'
-    printf '    This run will ADOPT them (import into Terraform state) rather than\n'
-    printf '    duplicate them. Nothing is deleted.\n'
-    printf '    To start completely fresh instead, remove them first:\n'
-    printf '      terraform destroy   # if you have local state, or\n'
-    printf '      gcloud iam workload-identity-pools delete %s --location=global --project=%s\n' \
-        "$pool_id" "$project"
-    PREFLIGHT_JSON="${PREFLIGHT_JSON}$(jq -nc --arg d "${found%, }" \
-        '{name:"existing resources", ok:true, detail:("will adopt: " + $d),
-          remedy:"Adoption is non-destructive. To start fresh, delete them before re-running."}'),"
+    local detail="${imported%, }"
+    [ -n "$reused" ] && detail="${detail:+${detail}; }${reused}"
+
+    # Not a failure: both outcomes are correct and non-destructive. But they are
+    # material facts about the user's project and they should read them first.
+    printf '  \033[33m!\033[0m %-22s %s\n' "existing resources" "$detail"
+
+    if [ -n "$imported" ]; then
+        printf '    From an earlier VectorPlane setup attempt: %s\n' "${imported%, }"
+        printf '    This run will ADOPT these — import them into Terraform state and\n'
+        printf '    manage them from here. They are not duplicated and not deleted.\n'
+    fi
+
+    if [ -n "$reused" ]; then
+        printf '    Your Terraform state bucket already exists. It is reused, not\n'
+        printf '    imported — it holds the state rather than being described by it,\n'
+        printf '    so any previous state is preserved. This is the normal case on a\n'
+        printf '    re-run and needs nothing from you.\n'
+    fi
+
+    if [ -n "$imported" ]; then
+        printf '    To start fresh instead, delete them before re-running:\n'
+        printf '      gcloud iam workload-identity-pools delete %s --location=global --project=%s\n' \
+            "$pool_id" "$project"
+        printf '      gcloud iam service-accounts delete vectorplane-security@%s.iam.gserviceaccount.com\n' \
+            "$project"
+    fi
+
+    PREFLIGHT_JSON="${PREFLIGHT_JSON}$(jq -nc \
+        --arg i "${imported%, }" --arg r "$reused" \
+        '{name:"existing resources", ok:true,
+          detail:([(if $i == "" then empty else "will adopt: " + $i end),
+                   (if $r == "" then empty else "will reuse: " + $r end)] | join("; ")),
+          remedy:"Both are non-destructive. To start fresh, delete the adopted resources before re-running."}'),"
 }
 
 preflight_report() {
