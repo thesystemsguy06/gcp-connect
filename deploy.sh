@@ -229,9 +229,29 @@ preflight_project() {
     # "You may need Owner or Editor" existed because the script could not tell. It can.
     local needed missing granted
     needed='["serviceusage.services.enable","iam.workloadIdentityPools.create","iam.serviceAccounts.create","resourcemanager.projects.setIamPolicy","storage.buckets.create"]'
-    granted=$(gcloud projects test-iam-permissions "$project" \
-        --permissions="$(echo "$needed" | jq -r 'join(",")')" \
-        --format="value(permissions)" 2>/dev/null | tr ';' '\n' | tr ',' '\n' || echo "")
+    # testIamPermissions is REST-only — there is no `gcloud projects test-iam-permissions`
+    # subcommand. Calling one silently failed on every run, and because the failure was
+    # discarded the empty result read as "holds none of them": every user was told to grant
+    # five permissions they already had. Call the API directly.
+    local response err
+    response=$(curl -sS -X POST \
+        "https://cloudresourcemanager.googleapis.com/v1/projects/${project}:testIamPermissions" \
+        -H "Authorization: Bearer $(gcloud auth print-access-token 2>/dev/null)" \
+        -H "Content-Type: application/json" \
+        -d "{\"permissions\":${needed}}" 2>&1)
+
+    # A check that could not run is NOT a check that found nothing. Collapsing the two is
+    # what produced the bug above, so "unverifiable" gets its own branch and says why.
+    err=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null)
+    if [ -n "$err" ] || ! echo "$response" | jq -e 'has("permissions")' >/dev/null 2>&1; then
+        _check_fail "permissions" "could not verify: ${err:-no response from Cloud Resource Manager}" \
+            "VectorPlane could not read your permissions, so it will not guess at them." \
+            "If the API is not enabled on this project, enable it and re-run:" \
+            "  gcloud services enable cloudresourcemanager.googleapis.com --project=$project"
+        return
+    fi
+
+    granted=$(echo "$response" | jq -r '.permissions[]? // empty')
     missing=""
     for perm in $(echo "$needed" | jq -r '.[]'); do
         echo "$granted" | grep -qx "$perm" || missing="${missing}${perm} "
@@ -337,11 +357,18 @@ preflight_existing_resources() {
     fi
 
     if [ -n "$imported" ]; then
+        # Only offer to delete what was actually found. Printing both unconditionally told
+        # users to delete resources that do not exist, which reads as "the check saw
+        # something I cannot see" and sends them investigating a non-problem.
         printf '    To start fresh instead, delete them before re-running:\n'
-        printf '      gcloud iam workload-identity-pools delete %s --location=global --project=%s\n' \
-            "$pool_id" "$project"
-        printf '      gcloud iam service-accounts delete vectorplane-security@%s.iam.gserviceaccount.com\n' \
-            "$project"
+        case "$imported" in *"WIF pool"*)
+            printf '      gcloud iam workload-identity-pools delete %s --location=global --project=%s\n' \
+                "$pool_id" "$project" ;;
+        esac
+        case "$imported" in *"service account"*)
+            printf '      gcloud iam service-accounts delete vectorplane-security@%s.iam.gserviceaccount.com\n' \
+                "$project" ;;
+        esac
     fi
 
     PREFLIGHT_JSON="${PREFLIGHT_JSON}$(jq -nc \
