@@ -18,6 +18,15 @@ data "google_client_config" "current" {}
 data "google_project" "current" {
   count      = var.onboarding_scope == "PROJECT" ? 1 : 0
   project_id = local.effective_project_id
+
+  # Fail here, once, naming the actual problem — rather than letting a null project
+  # propagate and surface as five unrelated-looking errors about missing arguments.
+  lifecycle {
+    precondition {
+      condition     = local.effective_project_id != ""
+      error_message = "Could not determine which GCP project to configure: VectorPlane sent no project and this Cloud Shell has no default project set. Re-run onboarding from VectorPlane with a project selected, or run: gcloud config set project YOUR_PROJECT_ID"
+    }
+  }
 }
 
 data "google_organization" "current" {
@@ -28,7 +37,22 @@ data "google_organization" "current" {
 locals {
   # Auto-detect project ID if not provided (for PROJECT scope)
   # CTO Decision: For PROJECT scope, allow empty gcp_scope_id and auto-detect from Cloud Shell
-  effective_project_id = var.gcp_scope_id != "" ? var.gcp_scope_id : data.google_client_config.current.project
+  # google_client_config.project is null when the Cloud Shell session has no default
+  # project configured. Reading it into a string interpolation then fails with "cannot
+  # include a null value", several frames away from the actual cause.
+  ambient_project = data.google_client_config.current.project != null ? data.google_client_config.current.project : ""
+
+  # Resolution order matters, and it used to skip the most authoritative source. var.project_id
+  # is the project the operator explicitly selected in VectorPlane — carried in the payload and
+  # already access-checked by preflight — yet it was declared "informational, not used" while
+  # the module leaned on gcp_scope_id and, failing that, whatever gcloud happened to be pointed
+  # at. A session with an empty scope in a shell with no default project therefore resolved to
+  # null and produced five downstream errors, none of which named the missing project.
+  effective_project_id = (
+    var.gcp_scope_id != "" ? var.gcp_scope_id :
+    var.project_id != "" ? var.project_id :
+    local.ambient_project
+  )
 
   # Determine the target project for resource creation
   target_project = var.onboarding_scope == "PROJECT" ? local.effective_project_id : null

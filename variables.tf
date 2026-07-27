@@ -148,7 +148,7 @@ variable "enable_state_file_access" {
 # -----------------------------------------------------------------------------
 
 variable "project_id" {
-  description = "GCP project ID from VectorPlane context (informational, not used by module)"
+  description = "GCP project ID selected by the operator in VectorPlane. Used as the project when gcp_scope_id is empty, in preference to whatever gcloud is pointed at."
   type        = string
   default     = ""
 }
