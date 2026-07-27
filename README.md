@@ -31,10 +31,16 @@ This Terraform module establishes a trust relationship that allows VectorPlane t
 The easiest way to use this module is through the VectorPlane dashboard:
 
 1. Navigate to **Integrations > Add Cloud Account > GCP**
-2. Click **"Open in Cloud Shell"**
-3. Review the Terraform plan in Cloud Shell
-4. Run `terraform apply`
-5. Done! VectorPlane will automatically detect the setup.
+2. Click **"Open in Cloud Shell"** and note the **pairing code** shown on the
+   dashboard — it is valid for 20 minutes
+3. In Cloud Shell, run `./deploy.sh --check` to confirm your prerequisites.
+   This changes nothing and does not consume the code
+4. Run `./deploy.sh` and paste the pairing code when prompted
+5. Watch progress on the dashboard; it updates as each step completes
+
+`deploy.sh` handles configuration, API enablement, and `terraform apply` itself.
+You do not run Terraform directly, and you do not copy anything back to the
+dashboard by hand.
 
 ## Manual Usage
 
@@ -42,7 +48,7 @@ If you prefer to run Terraform locally:
 
 ```hcl
 module "vectorplane" {
-  source = "github.com/vectorplane/gcp-connect"
+  source = "github.com/thesystemsguy06/gcp-connect"
 
   # Required: Provided by VectorPlane UI
   external_id    = "sess_01HQ..."      # Your session ID
@@ -65,11 +71,26 @@ module "vectorplane" {
 |------|-------------|------|---------|:--------:|
 | `external_id` | VectorPlane session ID | `string` | - | yes |
 | `webhook_secret` | HMAC secret for webhook auth | `string` | - | yes |
-| `gcp_scope_id` | Project ID or Organization ID | `string` | - | yes |
-| `onboarding_scope` | `PROJECT` or `ORGANIZATION` | `string` | `PROJECT` | no |
+| `gcp_scope_id` | Project, folder, or organization ID | `string` | `""` | in practice |
+| `project_id` | Project the resources are created in | `string` | `""` | in practice |
+| `onboarding_scope` | `PROJECT`, `FOLDER`, or `ORGANIZATION` | `string` | `PROJECT` | no |
 | `organization_id` | Org ID (if scope is ORGANIZATION) | `string` | `""` | no |
+| `vectorplane_aws_account_id` | AWS account the WIF provider trusts | `string` | `101460827772` | no |
+| `vectorplane_aws_role_name` | AWS role name in the attribute condition | `string` | `VectorPlaneWorker` | no |
+| `vectorplane_callback_url` | Where the module reports completion | `string` | `https://api.vectorplane.io/...` | no |
+| `wif_pool_id` | Workload Identity Pool ID | `string` | `vectorplane-security-pool` | no |
+| `wif_provider_id` | Workload Identity Provider ID | `string` | `vectorplane-aws-provider` | no |
+| `service_account_id` | Service account ID to create | `string` | `vectorplane-security` | no |
 | `enable_folder_discovery` | Enable folder enumeration | `bool` | `true` | no |
 | `enable_state_file_access` | Enable GCS state file access | `bool` | `true` | no |
+| `dev_oidc_issuer_url` | Development override for the OIDC issuer | `string` | `""` | no |
+
+Only `external_id` and `webhook_secret` have no default, so only those two are
+required by Terraform. `gcp_scope_id` and `project_id` default to `""`, which
+applies cleanly and then fails at the IAM binding — supply them.
+
+When you onboard through the dashboard, `deploy.sh` writes all of these into
+`terraform.tfvars.json` for you. This table matters only for manual use.
 
 ## Outputs
 
@@ -81,19 +102,35 @@ module "vectorplane" {
 
 ## IAM Roles Granted
 
+This is the complete list. `terraform output granted_roles` prints the same set
+for your own scope after apply, so you can verify it rather than trust this table.
+
 ### Project Scope
 
 | Role | Purpose |
 |------|---------|
 | `roles/securitycenter.findingsEditor` | Read and update security findings |
-| `roles/storage.objectViewer` | Read Terraform state files |
+| `roles/storage.objectViewer` | Read Terraform state files (omitted if `enable_state_file_access = false`) |
+| `roles/compute.viewer` | Read live resource configuration when generating import HCL |
 
 ### Organization Scope (Additional)
 
 | Role | Purpose |
 |------|---------|
-| `roles/resourcemanager.folderViewer` | Enumerate folder hierarchy |
+| `roles/resourcemanager.folderViewer` | Enumerate folder hierarchy (omitted if `enable_folder_discovery = false`) |
 | `roles/resourcemanager.organizationViewer` | Read organization metadata |
+| `roles/browser` | Resolve project names across the hierarchy |
+
+### Folder Scope (Additional)
+
+| Role | Purpose |
+|------|---------|
+| `roles/resourcemanager.folderViewer` | Enumerate folder hierarchy (omitted if `enable_folder_discovery = false`) |
+| `roles/browser` | Resolve project names within the folder |
+
+All three are read-only apart from `findingsEditor`, which VectorPlane uses to
+update the workflow status of findings it has remediated. None of them grant the
+ability to create, modify, or delete infrastructure.
 
 ## Security Considerations
 
@@ -130,6 +167,28 @@ gcloud iam workload-identity-pools providers delete vectorplane-aws-provider \
 
 ## Troubleshooting
 
+### Start here
+
+```bash
+./deploy.sh --check
+```
+
+Reports every prerequisite problem at once — missing tools, wrong directory,
+unreachable API, wrong account — and names the command that fixes each. It
+changes nothing and does not consume a pairing code, so it is safe to re-run as
+often as you like.
+
+### Permission Denied During Apply
+
+`./deploy.sh --check` asks GCP which of the required permissions you actually
+hold, using `gcloud projects test-iam-permissions`, and names the ones you are
+missing. You do not have to guess at role names.
+
+The permissions needed are covered by `roles/iam.workloadIdentityPoolAdmin`,
+`roles/iam.serviceAccountAdmin`, and `roles/resourcemanager.projectIamAdmin`, or
+by `roles/owner`. For ORGANIZATION scope you additionally need organization-level
+IAM admin — project Owner does not confer it, which is the most common surprise.
+
 ### Webhook Failed
 
 If Terraform completes but VectorPlane doesn't show the connection:
@@ -138,12 +197,13 @@ If Terraform completes but VectorPlane doesn't show the connection:
 2. Go to VectorPlane > Integrations > Manual Setup
 3. Enter the `external_id` and `service_account_email`
 
-### Permission Denied During Apply
+### "Invalid pairing code"
 
-Ensure your Cloud Shell has these roles:
-- `roles/iam.workloadIdentityPoolAdmin`
-- `roles/iam.serviceAccountAdmin`
-- `roles/resourcemanager.projectIamAdmin`
+Two causes, in order of likelihood. The code expired — they last 20 minutes;
+start a new connection from the dashboard for a fresh one. Or you are in the
+wrong directory: `cloudshell_open` clones into a subdirectory, and re-logging in
+under a different Google account lands you in a different home. `./deploy.sh
+--check` verifies the working directory for exactly this reason.
 
 ### Token Exchange Fails
 

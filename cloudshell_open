@@ -1,28 +1,7 @@
 #!/bin/bash
-# VectorPlane GCP Onboarding - Cloud Shell Auto-Execution Hook
-# This script runs automatically when Cloud Shell opens
-
-# Display welcome message
-if [ -f "README-cloudshell.txt" ]; then
-    cat README-cloudshell.txt
-    echo ""
-fi
-
-# Provide immediate guidance
-echo "🎯 Ready to start? Follow these steps:"
-echo "   1. Click START in the tutorial pane (right sidebar)"
-echo "   2. Click 'Sync VectorPlane Configuration' button"
-echo "   3. Follow the guided steps to completion"
-echo ""
-
-# Verify environment is ready
-if [ -n "$VP_TOKEN" ]; then
-    echo "✅ VP_TOKEN configured - environment ready"
-else
-    echo "❌ VP_TOKEN missing - please restart from VectorPlane"
-fi
-
-echo ""
-echo "📖 Tutorial guide: Click START in the right panel"
-echo "⚡ Quick start: Run ./setup_env.sh"
-echo ""
+# Superseded. This printed instructions for the VP_TOKEN flow — "click START in
+# the tutorial pane", "run ./setup_env.sh" — neither of which is how onboarding
+# works now. What Cloud Shell actually shows on open is PRINT.md, named by the
+# cloudshell_print parameter in the link VectorPlane generates.
+echo "Run ./deploy.sh to connect this project to VectorPlane."
+echo "You will need the pairing code shown on your VectorPlane dashboard."
