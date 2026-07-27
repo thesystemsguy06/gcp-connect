@@ -86,6 +86,7 @@ output "granted_roles" {
   value = compact([
     "roles/securitycenter.findingsEditor",
     var.enable_state_file_access ? "roles/storage.objectViewer" : null,
+    "roles/compute.viewer",
     # Organization scope roles
     var.onboarding_scope == "ORGANIZATION" && var.enable_folder_discovery ? "roles/resourcemanager.folderViewer" : null,
     var.onboarding_scope == "ORGANIZATION" && var.enable_folder_discovery ? "roles/resourcemanager.organizationViewer" : null,

@@ -196,6 +196,14 @@ resource "google_project_iam_member" "storage_viewer" {
   member  = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
+# Compute Viewer - For Codifier live resource state fetching (import HCL generation)
+resource "google_project_iam_member" "compute_viewer" {
+  count   = var.onboarding_scope == "PROJECT" ? 1 : 0
+  project = local.effective_project_id
+  role    = "roles/compute.viewer"
+  member  = "serviceAccount:${google_service_account.vectorplane.email}"
+}
+
 # -----------------------------------------------------------------------------
 # 6. IAM Role Bindings - Organization Level
 # -----------------------------------------------------------------------------
@@ -214,6 +222,14 @@ resource "google_organization_iam_member" "storage_viewer" {
   count  = var.onboarding_scope == "ORGANIZATION" && var.enable_state_file_access ? 1 : 0
   org_id = var.organization_id != "" ? var.organization_id : var.gcp_scope_id
   role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.vectorplane.email}"
+}
+
+# Compute Viewer at Org Level - For Codifier live resource state fetching
+resource "google_organization_iam_member" "compute_viewer" {
+  count  = var.onboarding_scope == "ORGANIZATION" ? 1 : 0
+  org_id = var.organization_id != "" ? var.organization_id : var.gcp_scope_id
+  role   = "roles/compute.viewer"
   member = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
@@ -264,8 +280,10 @@ resource "time_sleep" "iam_propagation" {
     # SCC access bindings (for G6 pre-flight check)
     google_project_iam_member.scc_findings_editor,
     google_project_iam_member.storage_viewer,
+    google_project_iam_member.compute_viewer,
     google_organization_iam_member.scc_findings_editor,
     google_organization_iam_member.storage_viewer,
+    google_organization_iam_member.compute_viewer,
     google_organization_iam_member.folder_viewer,
     google_organization_iam_member.org_viewer,
     google_organization_iam_member.browser,
@@ -293,6 +311,14 @@ resource "google_folder_iam_member" "storage_viewer" {
   count  = var.onboarding_scope == "FOLDER" && var.enable_state_file_access ? 1 : 0
   folder = var.gcp_scope_id
   role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.vectorplane.email}"
+}
+
+# Compute Viewer at Folder Level - For Codifier live resource state fetching
+resource "google_folder_iam_member" "compute_viewer" {
+  count  = var.onboarding_scope == "FOLDER" ? 1 : 0
+  folder = var.gcp_scope_id
+  role   = "roles/compute.viewer"
   member = "serviceAccount:${google_service_account.vectorplane.email}"
 }
 
